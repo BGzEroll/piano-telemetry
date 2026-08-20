@@ -1,0 +1,2 @@
+"""Bundled Web UI assets."""
+

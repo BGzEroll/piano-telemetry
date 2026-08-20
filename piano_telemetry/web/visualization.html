@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>可视化 · Piano Telemetry</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="visualization-page">
+  <nav class="topbar">
+    <a class="brand" href="/">Piano <span>Telemetry</span></a>
+    <div class="nav-links">
+      <a class="active" href="/visualization">可视化</a>
+      <a href="/settings">设置</a>
+    </div>
+  </nav>
+
+  <main class="visual-shell">
+    <header class="visual-header">
+      <div>
+        <div class="eyebrow">LIVE PERFORMANCE</div>
+        <h1>实时演奏</h1>
+      </div>
+      <div class="live-indicator"><span id="ws-dot"></span><b id="ws-status">连接中</b></div>
+    </header>
+
+    <section class="metric-strip">
+      <div class="metric"><span>当前和弦</span><strong id="chord">—</strong></div>
+      <div class="metric"><span>力度</span><strong id="velocity">0</strong></div>
+      <div class="metric"><span>延音踏板</span><strong id="sustain">0</strong></div>
+      <div class="metric"><span>事件序号</span><strong id="sequence">—</strong></div>
+      <div class="metric wide"><span>MIDI 路由</span><strong id="route-label">未运行</strong></div>
+    </section>
+
+    <section class="waterfall-panel">
+      <div class="canvas-label"><span>MIDI WATERFALL</span><small>C1 — C8</small></div>
+      <canvas id="waterfall"></canvas>
+      <canvas id="keyboard"></canvas>
+    </section>
+
+    <footer class="visual-footer">
+      <span id="note-list">当前没有按键</span>
+      <span id="data-warning"></span>
+    </footer>
+  </main>
+  <script src="/static/visualization.js"></script>
+</body>
+</html>
+

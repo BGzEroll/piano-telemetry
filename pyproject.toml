@@ -9,12 +9,16 @@ description = "Low-latency MIDI pass-through and best-effort piano telemetry for
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "fastapi>=0.116,<1",
     "mido>=1.3.3,<2",
     "python-rtmidi>=1.5.8,<2",
+    "uvicorn>=0.35,<1",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "httpx>=0.28,<1",
+    "pyinstaller>=6.15,<7",
     "pytest>=8.3,<10",
 ]
 
@@ -24,7 +28,9 @@ piano-telemetry = "piano_telemetry.app:main"
 [tool.setuptools.packages.find]
 include = ["piano_telemetry*"]
 
+[tool.setuptools.package-data]
+piano_telemetry = ["web/*.html", "web/static/*.css", "web/static/*.js"]
+
 [tool.pytest.ini_options]
 addopts = "-ra"
 testpaths = ["tests"]
-

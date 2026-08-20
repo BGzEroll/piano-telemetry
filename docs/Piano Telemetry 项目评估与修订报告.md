@@ -524,26 +524,53 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 - `.part` 文件崩溃恢复和 `aborted` 标记。
 - Session 结束后的 Standard MIDI 导出。
 - `route --record` 自动 Session 录制模式。
-- 13 项事件解析、广播隔离、覆盖读取、观察者故障、Session、丢弃统计和恢复测试。
+- FastAPI 本地 HTTP 服务和 WebSocket 实时广播。
+- “可视化”和“设置”双入口门户。
+- Web 设置持久化、端口枚举及 MIDI 路由启停。
+- MIDI 瀑布流、钢琴键盘、力度、Sustain、当前按键和基础和弦显示。
+- 每个 WebSocket 客户端独立有界队列和慢客户端丢弃策略。
+- `%APPDATA%\PianoTelemetry\config.json` 用户配置存储。
+- `%LOCALAPPDATA%\PianoTelemetry\sessions` 默认 Session 存储。
+- PyInstaller 单文件 Windows EXE 及内置 Web 静态资源。
+- 21 项事件解析、广播隔离、录制、状态分析和 Web API/WebSocket 测试。
 
 自动化测试结果：
 
 ```text
-13 passed
+21 passed
 ```
 
 当前 Windows MIDI 枚举结果：
 
 ```text
 MIDI inputs:
-  (none)
+  [0] test 0
 MIDI outputs:
   [0] Microsoft GS Wavetable Synth 0
+  [1] test 1
 ```
 
-因此真实 Phase 0 链路验证尚未完成。loopMIDI 程序虽然正在运行，但还没有向 Windows 暴露可枚举的虚拟端口；电钢琴当前不在现场，输入端口为空属于预期状态。下一次验证前需要：
+当前已经可以枚举名为 `test` 的虚拟 MIDI 端口，但电钢琴不在现场，因此真实 Phase 0 硬件链路验证仍未完成。下一次验证前需要：
 
 1. 在 loopMIDI 中创建并保持一个端口，例如 `Piano Telemetry Out`。
 2. 连接并开启电钢琴，确认其 Windows MIDI 驱动已经就绪。
 3. 再运行 `python -m piano_telemetry ports` 检查两个端口。
 4. 使用 `python -m piano_telemetry route --input "输入端口" --output "Piano Telemetry Out"` 开始真实透传。
+
+### EXE 验证
+
+已生成：
+
+```text
+dist\PianoTelemetry.exe
+```
+
+验证时从不包含源码和 Web 资源的临时目录启动 EXE，结果如下：
+
+- FastAPI/Uvicorn 正常启动。
+- 门户 `/` 返回 HTTP 200。
+- 内置 `/static/app.css` 返回 HTTP 200。
+- 设置和状态 API 正常响应。
+- EXE 可独立枚举 Windows MIDI 端口。
+- 配置写入 `%APPDATA%\PianoTelemetry\config.json`。
+- 工作目录中不需要存在 HTML、CSS、JavaScript 或 Python 源文件。

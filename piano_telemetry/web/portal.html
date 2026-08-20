@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Piano Telemetry</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="portal-page">
+  <main class="portal-shell">
+    <header class="hero">
+      <div class="eyebrow">PIANO TELEMETRY</div>
+      <h1>让每一次触键<br><span>清晰可见</span></h1>
+      <p>低延迟 MIDI 透传、实时演奏可视化与练习记录。</p>
+      <div class="status-line">
+        <span id="status-dot" class="status-dot"></span>
+        <span id="status-text">正在读取服务状态…</span>
+      </div>
+    </header>
+
+    <section class="portal-grid" aria-label="功能入口">
+      <a class="portal-card visual-card" href="/visualization">
+        <div class="card-index">01</div>
+        <div class="card-icon" aria-hidden="true">▥</div>
+        <h2>可视化</h2>
+        <p>查看实时瀑布流、当前按键、力度、踏板与和弦。</p>
+        <span class="card-link">进入演奏视图 <b>→</b></span>
+      </a>
+
+      <a class="portal-card settings-card" href="/settings">
+        <div class="card-index">02</div>
+        <div class="card-icon" aria-hidden="true">⌁</div>
+        <h2>设置</h2>
+        <p>选择 MIDI 输入和输出端口，配置系统消息与启动路由。</p>
+        <span class="card-link">配置设备 <b>→</b></span>
+      </a>
+    </section>
+
+    <footer class="portal-footer">
+      <span>LOCAL · PRIVATE · LOW LATENCY</span>
+      <span id="port-summary">尚未选择 MIDI 端口</span>
+    </footer>
+  </main>
+  <script src="/static/portal.js"></script>
+</body>
+</html>
+

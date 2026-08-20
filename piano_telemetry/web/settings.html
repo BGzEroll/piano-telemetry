@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>设置 · Piano Telemetry</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="/">Piano <span>Telemetry</span></a>
+    <div class="nav-links">
+      <a href="/visualization">可视化</a>
+      <a class="active" href="/settings">设置</a>
+    </div>
+  </nav>
+
+  <main class="page-shell settings-shell">
+    <header class="page-heading">
+      <div>
+        <div class="eyebrow">DEVICE CONFIGURATION</div>
+        <h1>设置</h1>
+        <p>配置实时链路。保存设置不会自动重启正在运行的 MIDI 路由。</p>
+      </div>
+      <div id="route-status" class="route-status offline">未运行</div>
+    </header>
+
+    <section class="settings-panel">
+      <div class="panel-title">
+        <div>
+          <span class="step-number">01</span>
+          <h2>MIDI 路由</h2>
+        </div>
+        <button id="refresh-ports" class="button ghost" type="button">刷新端口</button>
+      </div>
+
+      <div class="form-grid">
+        <label class="field">
+          <span>输入端口</span>
+          <select id="input-port"><option value="">请选择电钢琴输入</option></select>
+          <small>来自电钢琴或其他 MIDI 控制器。</small>
+        </label>
+        <div class="route-arrow" aria-hidden="true">→</div>
+        <label class="field">
+          <span>输出端口</span>
+          <select id="output-port"><option value="">请选择 loopMIDI 输出</option></select>
+          <small>NanoHost 应监听同一个 loopMIDI 端口。</small>
+        </label>
+      </div>
+      <div id="port-message" class="inline-message"></div>
+    </section>
+
+    <section class="settings-panel">
+      <div class="panel-title">
+        <div>
+          <span class="step-number">02</span>
+          <h2>系统消息</h2>
+        </div>
+      </div>
+      <div class="toggle-list">
+        <label class="toggle-row">
+          <span><b>SysEx</b><small>厂商设备配置和变长消息。默认关闭以保护实时链路。</small></span>
+          <input id="receive-sysex" type="checkbox"><i></i>
+        </label>
+        <label class="toggle-row">
+          <span><b>MIDI Clock</b><small>外部节拍同步，每四分音符 24 个时钟消息。</small></span>
+          <input id="receive-clock" type="checkbox"><i></i>
+        </label>
+        <label class="toggle-row">
+          <span><b>Active Sensing</b><small>连接存活检测，需要实际设备兼容性测试。</small></span>
+          <input id="receive-active" type="checkbox"><i></i>
+        </label>
+        <label class="toggle-row">
+          <span><b>退出时清音</b><small>停止路由时发送 Sustain Off 和 All Notes Off。</small></span>
+          <input id="panic-on-stop" type="checkbox" checked><i></i>
+        </label>
+      </div>
+    </section>
+
+    <div class="settings-actions">
+      <button id="save-settings" class="button primary" type="button">保存设置</button>
+      <button id="start-midi" class="button success" type="button">启动 MIDI</button>
+      <button id="stop-midi" class="button danger" type="button">停止 MIDI</button>
+      <span id="action-message" class="action-message"></span>
+    </div>
+  </main>
+  <script src="/static/settings.js"></script>
+</body>
+</html>
+
