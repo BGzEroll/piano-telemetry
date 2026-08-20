@@ -74,6 +74,17 @@ python -m piano_telemetry serve --port 8765
 
 设置保存在程序目录下的 `data\config.json`。
 
+## NanoHost 联调曲目
+
+NanoHost 监听 loopMIDI 的 `test` 端口后，可播放内置的原创 MIDI 测试曲：
+
+```powershell
+conda activate piano-midi
+python tests\play_demo_midi.py
+```
+
+脚本默认查找名称中唯一包含 `test` 的输出端口。可使用 `--list-ports` 查看端口，或通过 `--port "完整端口名"`、`--bpm 90` 调整目标端口和速度。播放过程中按 `Ctrl+C` 会发送延音关闭、All Notes Off 和 All Sound Off。
+
 ## 构建 EXE
 
 ```powershell
