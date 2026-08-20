@@ -1,0 +1,5 @@
+{
+    "python.defaultInterpreterPath": "C:\\software\\miniconda3\\miniconda3\\envs\\piano-midi\\python.exe",
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda"
+}
