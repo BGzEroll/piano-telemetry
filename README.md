@@ -68,11 +68,11 @@ python -m piano_telemetry serve --port 8765
   --target-bpm 80
 ```
 
-按 `Ctrl+C` 后，Session 默认写入 `%LOCALAPPDATA%\PianoTelemetry\sessions\<session_id>\`，其中包含 `session.json`、`events.jsonl`、`summary.json` 和 `session.mid`。
+按 `Ctrl+C` 后，Session 默认写入程序目录下的 `data\sessions\<session_id>\`，其中包含 `session.json`、`events.jsonl`、`summary.json` 和 `session.mid`。EXE 模式下，“程序目录”就是 `PianoTelemetry.exe` 所在目录；源码模式下则是启动命令时的当前目录。
 
 默认过滤 SysEx、MIDI Clock 和 Active Sensing。可以分别使用 `--receive-sysex`、`--receive-clock`、`--receive-active-sensing` 开启接收与透传。它们仍不会改变“先输出、后发布观察事件”的顺序。
 
-设置保存在 `%APPDATA%\PianoTelemetry\config.json`，不依赖程序当前目录。
+设置保存在程序目录下的 `data\config.json`。
 
 ## 构建 EXE
 
@@ -87,3 +87,7 @@ dist\PianoTelemetry.exe
 ```
 
 EXE 内置全部 HTML、CSS、JavaScript、Python 运行时和 Conda 所需 DLL，可以复制到其他目录运行。双击或不带参数启动时会打开 Web 门户。
+
+首次保存设置或录制时，EXE 会在自身所在目录创建 `data`。因此应将 EXE 放在当前用户有写入权限的位置，不建议直接放入 `Program Files`。
+
+Uvicorn 的 WebSocket 运行库已作为正式依赖并打入 EXE。浏览器日志中的静态资源 `304 Not Modified` 表示资源缓存仍然有效，是正常响应，不是加载失败。

@@ -60,15 +60,15 @@ function noteX(note, width) { return ((note - noteMin) / (noteMax - noteMin + 1)
 function drawWaterfall(now) {
   const {width, height} = resizeCanvas(waterfall, waterfallContext);
   waterfallContext.clearRect(0, 0, width, height);
-  waterfallContext.fillStyle = '#07090d'; waterfallContext.fillRect(0, 0, width, height);
+  waterfallContext.fillStyle = '#f9fcfb'; waterfallContext.fillRect(0, 0, width, height);
   const noteWidth = width / (noteMax - noteMin + 1);
   for (let note = noteMin; note <= noteMax; note++) {
     const x = noteX(note, width);
     waterfallContext.fillStyle = [1,3,6,8,10].includes(note % 12)
-      ? 'rgba(255,255,255,.018)' : 'rgba(255,255,255,.035)';
+      ? 'rgba(24,52,44,.018)' : 'rgba(24,52,44,.04)';
     waterfallContext.fillRect(x, 0, Math.max(1, noteWidth - 1), height);
   }
-  waterfallContext.strokeStyle = 'rgba(232,189,103,.55)';
+  waterfallContext.strokeStyle = 'rgba(44,168,137,.65)';
   waterfallContext.beginPath(); waterfallContext.moveTo(0, height - 2); waterfallContext.lineTo(width, height - 2); waterfallContext.stroke();
 
   const visible = notes.filter(item => now - item.end < historyMs);
@@ -86,9 +86,12 @@ function drawNote(item, now, width, height, noteWidth) {
   const h = Math.max(4, Math.abs(yBottom - yTop));
   const x = noteX(item.note, width);
   const alpha = .55 + (item.velocity / 127) * .45;
-  waterfallContext.fillStyle = `rgba(91,214,219,${alpha})`;
-  waterfallContext.shadowColor = 'rgba(91,214,219,.5)'; waterfallContext.shadowBlur = item.end ? 0 : 12;
-  waterfallContext.fillRect(x + 1, y, Math.max(2, noteWidth - 2), h);
+  waterfallContext.fillStyle = `rgba(44,168,137,${alpha})`;
+  waterfallContext.shadowColor = 'rgba(44,168,137,.45)'; waterfallContext.shadowBlur = item.end ? 0 : 12;
+  const barWidth = Math.max(2, noteWidth - 2);
+  waterfallContext.beginPath();
+  waterfallContext.roundRect(x + 1, y, barWidth, h, Math.min(3, barWidth / 2, h / 2));
+  waterfallContext.fill();
   waterfallContext.shadowBlur = 0;
 }
 
@@ -99,14 +102,14 @@ function drawKeyboard() {
   for (let note = noteMin; note <= noteMax; note++) if (![1,3,6,8,10].includes(note % 12)) whiteNotes.push(note);
   const whiteWidth = width / whiteNotes.length;
   whiteNotes.forEach((note, index) => {
-    keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#e8bd67' : (state.sounding_notes?.includes(note) ? '#90dadd' : '#e8e8e5');
+    keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#55c9ae' : (state.sounding_notes?.includes(note) ? '#b9e9df' : '#ffffff');
     keyboardContext.fillRect(index * whiteWidth, 0, whiteWidth - 1, height);
   });
   for (let note = noteMin; note <= noteMax; note++) {
     if (![1,3,6,8,10].includes(note % 12)) continue;
     const previousWhite = whiteNotes.filter(value => value < note).length;
     const x = previousWhite * whiteWidth - whiteWidth * .32;
-    keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#e8bd67' : (state.sounding_notes?.includes(note) ? '#398d96' : '#10131a');
+    keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#39b99a' : (state.sounding_notes?.includes(note) ? '#78cfc3' : '#29463d');
     keyboardContext.fillRect(x, 0, whiteWidth * .64, height * .62);
   }
   requestAnimationFrame(drawKeyboard);

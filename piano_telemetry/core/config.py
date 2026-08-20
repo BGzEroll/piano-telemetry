@@ -2,26 +2,21 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from threading import RLock
 
 
-APP_DIRECTORY_NAME = "PianoTelemetry"
-
-
-def default_config_dir() -> Path:
-    base = os.environ.get("APPDATA")
-    if base:
-        return Path(base) / APP_DIRECTORY_NAME
-    return Path.home() / ".config" / APP_DIRECTORY_NAME
+def application_directory() -> Path:
+    """Directory containing the EXE, or the current directory in source mode."""
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path.cwd().resolve()
 
 
 def default_data_dir() -> Path:
-    base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-    if base:
-        return Path(base) / APP_DIRECTORY_NAME
-    return Path.home() / ".local" / "share" / APP_DIRECTORY_NAME
+    return application_directory() / "data"
 
 
 def default_sessions_dir() -> Path:
@@ -63,7 +58,7 @@ class AppSettings:
 
 class SettingsStore:
     def __init__(self, path: Path | str | None = None) -> None:
-        self.path = Path(path) if path is not None else default_config_dir() / "config.json"
+        self.path = Path(path) if path is not None else default_data_dir() / "config.json"
         self._lock = RLock()
 
     def load(self) -> AppSettings:
@@ -87,4 +82,3 @@ class SettingsStore:
                 encoding="utf-8",
             )
             os.replace(temporary, self.path)
-

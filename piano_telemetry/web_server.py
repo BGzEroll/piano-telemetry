@@ -145,4 +145,10 @@ def run_web_server(
         timer = Timer(0.8, webbrowser.open, args=(f"http://{browser_host}:{port}/",))
         timer.daemon = True
         timer.start()
-    uvicorn.run(create_web_app(), host=host, port=port, log_level="info")
+    uvicorn.run(
+        create_web_app(),
+        host=host,
+        port=port,
+        log_level="info",
+        ws="websockets-sansio",
+    )

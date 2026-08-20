@@ -529,15 +529,17 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 - Web 设置持久化、端口枚举及 MIDI 路由启停。
 - MIDI 瀑布流、钢琴键盘、力度、Sustain、当前按键和基础和弦显示。
 - 每个 WebSocket 客户端独立有界队列和慢客户端丢弃策略。
-- `%APPDATA%\PianoTelemetry\config.json` 用户配置存储。
-- `%LOCALAPPDATA%\PianoTelemetry\sessions` 默认 Session 存储。
+- 程序目录下 `data\config.json` 用户配置存储；EXE 模式对应 EXE 所在目录。
+- 程序目录下 `data\sessions` 默认 Session 存储。
 - PyInstaller 单文件 Windows EXE 及内置 Web 静态资源。
-- 21 项事件解析、广播隔离、录制、状态分析和 Web API/WebSocket 测试。
+- WebSocket 运行库作为正式依赖并随 EXE 打包，Uvicorn 使用 `websockets-sansio` 实现。
+- 门户、设置页和可视化页采用亮色极简主题，统一使用圆角卡片、轻边框、克制阴影和高辨识度状态色。
+- 22 项事件解析、广播隔离、录制、状态分析、路径和 Web API/WebSocket 测试。
 
 自动化测试结果：
 
 ```text
-21 passed
+22 passed
 ```
 
 当前 Windows MIDI 枚举结果：
@@ -572,5 +574,8 @@ dist\PianoTelemetry.exe
 - 内置 `/static/app.css` 返回 HTTP 200。
 - 设置和状态 API 正常响应。
 - EXE 可独立枚举 Windows MIDI 端口。
-- 配置写入 `%APPDATA%\PianoTelemetry\config.json`。
+- 配置写入 EXE 所在目录下的 `data\config.json`。
+- WebSocket 握手成功，客户端可收到初始 `state` 消息。
+- 启动时不再出现缺少 WebSocket library 的警告。
+- 静态资源出现 `304 Not Modified` 时表示浏览器缓存命中，属于正常 HTTP 响应。
 - 工作目录中不需要存在 HTML、CSS、JavaScript 或 Python 源文件。
