@@ -8,7 +8,11 @@ const elements = {
   portMessage: document.querySelector('#port-message'),
   actionMessage: document.querySelector('#action-message'),
   status: document.querySelector('#route-status'),
+  start: document.querySelector('#start-midi'),
+  stop: document.querySelector('#stop-midi'),
+  installLink: document.querySelector('#driver-install-link'),
 };
+let driverAvailable = false;
 
 function showMessage(target, message, type = '') {
   target.textContent = message;
@@ -16,17 +20,8 @@ function showMessage(target, message, type = '') {
   if (type) target.classList.add(`message-${type}`);
 }
 
-function fillSelect(select, values, selected, placeholder) {
-  select.replaceChildren(new Option(placeholder, ''));
-  for (const value of values) select.add(new Option(value, value));
-  if (selected && !values.includes(selected)) {
-    select.add(new Option(`${selected}（当前不可用）`, selected));
-  }
-  select.value = selected || '';
-}
-
 async function loadEverything() {
-  showMessage(elements.portMessage, '正在扫描 MIDI 端口…');
+  showMessage(elements.portMessage, '正在检测 teVirtualMIDI 驱动…');
   try {
     const [settingsResponse, portsResponse, statusResponse] = await Promise.all([
       fetch('/api/settings'), fetch('/api/midi/ports'), fetch('/api/status')
@@ -34,25 +29,28 @@ async function loadEverything() {
     const settings = await settingsResponse.json();
     const ports = await portsResponse.json();
     const status = await statusResponse.json();
-    if (!portsResponse.ok) throw new Error(ports.detail || '无法枚举 MIDI 端口');
-    fillSelect(elements.input, ports.inputs, settings.input_port, '请选择电钢琴输入');
-    fillSelect(elements.output, ports.outputs, settings.output_port, '请选择 loopMIDI 输出');
+    if (!portsResponse.ok) throw new Error(ports.detail || '无法检测 teVirtualMIDI 驱动');
+    elements.input.textContent = ports.input_port;
+    elements.output.textContent = ports.output_port;
+    driverAvailable = Boolean(ports.available);
+    elements.installLink.href = ports.install_url;
+    elements.installLink.hidden = driverAvailable;
     elements.sysex.checked = settings.receive_sysex;
     elements.clock.checked = settings.receive_clock;
     elements.active.checked = settings.receive_active_sensing;
     elements.panic.checked = settings.panic_on_stop;
-    showMessage(elements.portMessage,
-      `发现 ${ports.inputs.length} 个输入端口，${ports.outputs.length} 个输出端口。`);
+    showMessage(elements.portMessage, ports.message, driverAvailable ? 'success' : 'error');
     updateStatus(status);
   } catch (error) {
+    driverAvailable = false;
+    elements.installLink.hidden = false;
     showMessage(elements.portMessage, error.message, 'error');
+    updateStatus({running: false});
   }
 }
 
 function currentSettings() {
   return {
-    input_port: elements.input.value || null,
-    output_port: elements.output.value || null,
     receive_sysex: elements.sysex.checked,
     receive_clock: elements.clock.checked,
     receive_active_sensing: elements.active.checked,
@@ -74,6 +72,8 @@ function updateStatus(status) {
   elements.status.textContent = status.running ? '正在运行' : '未运行';
   elements.status.classList.toggle('online', status.running);
   elements.status.classList.toggle('offline', !status.running);
+  elements.start.disabled = !driverAvailable || status.running;
+  elements.stop.disabled = !status.running;
 }
 
 document.querySelector('#refresh-ports').addEventListener('click', loadEverything);
@@ -100,4 +100,3 @@ document.querySelector('#stop-midi').addEventListener('click', async () => {
 });
 
 loadEverything();
-

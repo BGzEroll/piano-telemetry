@@ -11,6 +11,10 @@ from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.midi.event import MidiEvent
 from piano_telemetry.midi.ports import list_midi_ports
 from piano_telemetry.midi.router import MidiRouter, MidiRouterConfig
+from piano_telemetry.midi.virtual_midi import (
+    VIRTUAL_INPUT_PORT_NAME,
+    VIRTUAL_OUTPUT_PORT_NAME,
+)
 from piano_telemetry.recorder import SessionRecorder
 
 
@@ -25,9 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("ports", help="list available MIDI input and output ports")
 
-    route = subparsers.add_parser("route", help="route one MIDI input to one MIDI output")
-    route.add_argument("--input", required=True, help="input port index, exact name, or substring")
-    route.add_argument("--output", required=True, help="output port index, exact name, or substring")
+    route = subparsers.add_parser("route", help="run the managed virtual MIDI route")
     route.add_argument("--ingress-capacity", type=int, default=4096)
     route.add_argument("--stats-interval", type=float, default=5.0)
     route.add_argument("--receive-sysex", action="store_true")
@@ -90,8 +92,9 @@ def _run_router(args: argparse.Namespace) -> int:
     )
     router = MidiRouter(
         MidiRouterConfig(
-            input_port=args.input,
-            output_port=args.output,
+            input_port=VIRTUAL_INPUT_PORT_NAME,
+            output_port=VIRTUAL_OUTPUT_PORT_NAME,
+            managed_virtual_ports=True,
             receive_sysex=args.receive_sysex,
             receive_clock=args.receive_clock,
             receive_active_sensing=args.receive_active_sensing,

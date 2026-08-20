@@ -10,12 +10,18 @@ from piano_telemetry.core.metrics import RouterMetrics
 
 from .event import MidiEvent
 from .ports import _load_rtmidi, resolve_port
+from .virtual_midi import (
+    VIRTUAL_INPUT_PORT_NAME,
+    VIRTUAL_OUTPUT_PORT_NAME,
+    VirtualMidiDriver,
+)
 
 
 @dataclass(frozen=True, slots=True)
 class MidiRouterConfig:
     input_port: str
     output_port: str
+    managed_virtual_ports: bool = False
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -29,6 +35,8 @@ class MidiRouter:
         self,
         config: MidiRouterConfig,
         dispatcher: EventDispatcher[MidiEvent],
+        *,
+        virtual_driver_factory=VirtualMidiDriver,
     ) -> None:
         self.config = config
         self.dispatcher = dispatcher
@@ -38,10 +46,15 @@ class MidiRouter:
         self._midi_in: Any | None = None
         self._midi_out: Any | None = None
         self._sequence = count(1)
+        self._virtual_driver_factory = virtual_driver_factory
 
     def start(self) -> None:
         if self._midi_in is not None or self._midi_out is not None:
             raise RuntimeError("MIDI router is already running")
+
+        if self.config.managed_virtual_ports:
+            self._start_managed_virtual_ports()
+            return
 
         rtmidi = _load_rtmidi()
         midi_out = rtmidi.MidiOut()
@@ -80,6 +93,25 @@ class MidiRouter:
             self._midi_out = None
             raise
 
+    def _start_managed_virtual_ports(self) -> None:
+        driver = self._virtual_driver_factory()
+        midi_out = driver.create_output_port(VIRTUAL_OUTPUT_PORT_NAME)
+        self._midi_out = midi_out
+        self.output_name = VIRTUAL_OUTPUT_PORT_NAME
+        self.input_name = VIRTUAL_INPUT_PORT_NAME
+        try:
+            midi_in = driver.create_input_port(
+                VIRTUAL_INPUT_PORT_NAME,
+                self._handle_virtual_message,
+            )
+        except Exception:
+            self._midi_out = None
+            self.output_name = None
+            self.input_name = None
+            midi_out.close_port()
+            raise
+        self._midi_in = midi_in
+
     def stop(self) -> None:
         midi_in = self._midi_in
         midi_out = self._midi_out
@@ -109,6 +141,18 @@ class MidiRouter:
 
     def _midi_callback(self, event: tuple[list[int], float], _: object | None = None) -> None:
         message, _delta_time = event
+        self._handle_message(message, captured_monotonic_ns=perf_counter_ns())
+
+    def _handle_virtual_message(self, message: list[int]) -> None:
+        if not message:
+            return
+        status = message[0]
+        if status == 0xF0 and not self.config.receive_sysex:
+            return
+        if status == 0xF8 and not self.config.receive_clock:
+            return
+        if status == 0xFE and not self.config.receive_active_sensing:
+            return
         self._handle_message(message, captured_monotonic_ns=perf_counter_ns())
 
     def _handle_message(self, message: list[int], *, captured_monotonic_ns: int) -> None:

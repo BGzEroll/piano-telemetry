@@ -32,23 +32,24 @@
           <span class="step-number">01</span>
           <h2>MIDI 路由</h2>
         </div>
-        <button id="refresh-ports" class="button ghost" type="button">刷新端口</button>
+        <button id="refresh-ports" class="button ghost" type="button">检测驱动</button>
       </div>
 
       <div class="form-grid">
-        <label class="field">
+        <div class="field">
           <span>输入端口</span>
-          <select id="input-port"><option value="">请选择电钢琴输入</option></select>
-          <small>来自电钢琴或其他 MIDI 控制器。</small>
-        </label>
+          <div id="input-port" class="managed-port-name">Piano Telemetry Input</div>
+          <small>由程序创建，测试脚本或其他 MIDI 软件向此端口发送。</small>
+        </div>
         <div class="route-arrow" aria-hidden="true">→</div>
-        <label class="field">
+        <div class="field">
           <span>输出端口</span>
-          <select id="output-port"><option value="">请选择 loopMIDI 输出</option></select>
-          <small>NanoHost 应监听同一个 loopMIDI 端口。</small>
-        </label>
+          <div id="output-port" class="managed-port-name">Piano Telemetry Output</div>
+          <small>由程序创建，NanoHost 应监听此端口。</small>
+        </div>
       </div>
       <div id="port-message" class="inline-message"></div>
+      <a id="driver-install-link" class="driver-install-link" href="https://www.tobias-erichsen.de/software/loopmidi.html" target="_blank" rel="noreferrer" hidden>安装 loopMIDI / teVirtualMIDI 驱动 ↗</a>
     </section>
 
     <section class="settings-panel">

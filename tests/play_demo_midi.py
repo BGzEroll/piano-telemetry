@@ -1,9 +1,9 @@
-"""向 loopMIDI 输出一段原创钢琴 MIDI，用于联调 NanoHost。
+"""向 Piano Telemetry 动态输入端口发送原创钢琴 MIDI，用于联调 NanoHost。
 
 推荐从项目根目录运行：
     python tests/play_demo_midi.py
 
-脚本默认选择名称中唯一包含 ``test`` 的 MIDI 输出端口。
+脚本默认选择程序启动后创建的 ``Piano Telemetry Input`` 输出端口。
 """
 
 from __future__ import annotations
@@ -14,6 +14,9 @@ from time import perf_counter, sleep
 from typing import Iterable
 
 import rtmidi
+
+
+DEFAULT_OUTPUT_PORT = "Piano Telemetry Input"
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,7 +140,7 @@ def build_song(channel: int, sustain: bool) -> tuple[list[Event], float]:
 def resolve_output(selector: str, ports: Iterable[str]) -> tuple[int, str]:
     names = tuple(ports)
     if not names:
-        raise RuntimeError("没有发现 MIDI 输出端口，请先启动 loopMIDI 并创建 test 端口")
+        raise RuntimeError("没有发现 MIDI 输出端口，请先在网页设置中启动 MIDI 路由")
 
     try:
         index = int(selector)
@@ -208,9 +211,13 @@ def panic(midi_out: rtmidi.MidiOut, channel: int) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="向 loopMIDI 播放原创钢琴短曲《窗边晨光》"
+        description="向 Piano Telemetry Input 播放原创钢琴短曲《窗边晨光》"
     )
-    parser.add_argument("--port", default="test", help="输出端口编号、完整名称或唯一片段")
+    parser.add_argument(
+        "--port",
+        default=DEFAULT_OUTPUT_PORT,
+        help="输出端口编号、完整名称或唯一片段",
+    )
     parser.add_argument("--bpm", type=float, default=108, help="速度，默认 108 BPM")
     parser.add_argument("--channel", type=int, default=1, choices=range(1, 17), help="MIDI 通道 1-16")
     parser.add_argument("--repeat", type=int, default=1, help="重复次数")

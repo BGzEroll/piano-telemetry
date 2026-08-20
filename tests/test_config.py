@@ -7,8 +7,6 @@ from piano_telemetry.core.config import AppSettings, SettingsStore
 def test_settings_round_trip_uses_explicit_path(tmp_path: Path) -> None:
     store = SettingsStore(tmp_path / "config.json")
     settings = AppSettings(
-        input_port="Digital Piano",
-        output_port="Piano Telemetry Out",
         receive_clock=True,
     )
 
@@ -16,6 +14,19 @@ def test_settings_round_trip_uses_explicit_path(tmp_path: Path) -> None:
 
     assert store.load() == settings
     assert store.path.parent == tmp_path
+
+
+def test_legacy_port_selection_is_ignored() -> None:
+    settings = AppSettings.from_dict(
+        {
+            "input_port": "Old Input",
+            "output_port": "Old Output",
+            "receive_clock": True,
+        }
+    )
+
+    assert settings == AppSettings(receive_clock=True)
+    assert "input_port" not in settings.to_dict()
 
 
 def test_invalid_settings_file_falls_back_to_defaults(tmp_path: Path) -> None:

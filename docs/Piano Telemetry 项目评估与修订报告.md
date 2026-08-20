@@ -1,6 +1,6 @@
 # Piano Telemetry 项目评估与修订报告
 
-更新日期：2026-08-20
+更新日期：2026-08-21
 
 ## 1. 结论
 
@@ -11,6 +11,7 @@
 1. 事件分发采用广播订阅模型，每个订阅者拥有独立队列，不使用多个模块竞争消费同一个队列。
 2. MIDI 实时透传是最高优先级。Recorder、Analyzer、Web 任一模块变慢时均允许丢失观察数据，不得向 MIDI 转发链路施加反压。
 3. 当前版本移除 OpenClaw、AI 教练、长期记忆以及为 OpenClaw 单独设计的 TCP Query/Control API。
+4. Web 与默认 CLI 路由改用 teVirtualMIDI 动态创建固定双端口；不再要求用户选择或预建 loopMIDI 端口。
 
 调整后，第一阶段产品定位为：
 
@@ -25,7 +26,7 @@
 | Miniconda | 已安装于 `C:\software\miniconda3\miniconda3` | 可用 |
 | Conda 环境 | `piano-midi` 已存在 | 可用 |
 | Python | 3.12.13 | 符合项目要求 |
-| loopMIDI | 1.0.16.27，进程正在运行 | 可用于 Python → NanoHost 的虚拟 MIDI 路由 |
+| teVirtualMIDI | 驱动/DLL 1.3.0.43 已安装 | 程序可直接动态创建和销毁虚拟端口 |
 | 项目代码 | Phase 0/1 基础已实现 | 等待真实 MIDI 端口完成链路验证 |
 
 ### 2.2 需要处理的环境事项
@@ -54,19 +55,14 @@
 
 当前 `.vscode/settings.json` 只指定了 Conda 作为环境和包管理器，没有固定具体解释器。开始开发前应确认 VS Code 状态栏选择的是上述 `piano-midi` 环境，避免把依赖安装到 `base`。
 
-loopMIDI 已安装并运行，但仍需在 Phase 0 确认以下配置：
-
-- loopMIDI 中已经创建一个固定名称的端口，例如 `Piano Telemetry Out`。
-- Python 将该端口作为 MIDI Output 打开。
-- NanoHost 将同一端口作为 MIDI Input 打开。
-- 电钢琴硬件端口没有同时被其他独占程序占用。
+程序不集成或分发 teVirtualMIDI SDK/DLL。用户需要自行安装 loopMIDI 所附带的 teVirtualMIDI 驱动，但不需要运行 `loopMIDI.exe`。驱动缺失时，设置页显示安装提示并禁止启动 MIDI。
 
 ## 3. 修订后的范围
 
 ### 3.1 当前范围
 
-- 电钢琴 MIDI 输入。
-- MIDI 低延迟透传到 loopMIDI。
+- 固定的 `Piano Telemetry Input` 软件 MIDI 输入。
+- MIDI 低延迟透传到固定的 `Piano Telemetry Output`。
 - NanoHost / VSTi 正常发声。
 - Session 管理。
 - JSONL 原始事件记录。
@@ -108,7 +104,7 @@ Digital Piano
       ▼
 MIDI Input Callback
       │
-      ├── 1. 立即发送 → loopMIDI → NanoHost
+      ├── 1. 立即发送 → Piano Telemetry Output → NanoHost
       │
       └── 2. try_publish(event)
                     │
@@ -135,7 +131,7 @@ Dispatcher 对每个订阅者执行一次独立投递。Recorder 从 `Recorder Q
 
 1. 获取原始 MIDI 数据和时间戳。
 2. 分配递增 `seq`。
-3. 立即向 loopMIDI 输出。
+3. 立即向 `Piano Telemetry Output` 输出。
 4. 尝试把观察事件放入入口队列。
 5. 立即返回。
 
@@ -410,12 +406,12 @@ piano_telemetry/
 目标：验证真实硬件链路，不建设 Web 和 Recorder。
 
 ```text
-Digital Piano → python-rtmidi → loopMIDI → NanoHost
+MIDI Producer → Piano Telemetry Input → teVirtualMIDI → Piano Telemetry Output → NanoHost
 ```
 
 验收内容：
 
-- 正确列出电钢琴输入端口和 loopMIDI 输出端口。
+- 启动时正确创建固定输入/输出端口，停止时自动删除。
 - NanoHost 能持续正常发声。
 - Note、力度和 Sustain 正确透传。
 - 程序可以处理端口不存在、端口占用和设备中途断开。
@@ -490,7 +486,7 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 - 发生丢失时对应 drop counter 增长，Session 被标记为不完整。
 - 无长期卡音；断流或状态缺口后可以清理并重建 UI 状态。
 
-延迟指标应先通过 Phase 0 测出本机基线。可以暂以“Python 增加的输入到输出调用延迟 p99 不高于约 2 ms”为候选目标，再根据电钢琴、WinMM、loopMIDI 和 NanoHost 的实测结果锁定正式门槛。
+延迟指标应先通过 Phase 0 测出本机基线。可以暂以“Python 增加的输入到输出调用延迟 p99 不高于约 2 ms”为候选目标，再根据电钢琴、WinMM、teVirtualMIDI 和 NanoHost 的实测结果锁定正式门槛。
 
 ## 13. 最终建议
 
@@ -508,8 +504,8 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 
 - Python 项目和命令行入口。
 - 统一、不可变 `MidiEvent` 模型。
-- MIDI 输入/输出端口枚举。
-- `python-rtmidi` 输入 callback 到输出端口的优先透传。
+- teVirtualMIDI 驱动可用性检测。
+- 固定双端口的动态创建、优先透传和自动销毁。
 - SysEx、MIDI Clock、Active Sensing 的显式接收开关。
 - 单一有界 Ingress Queue。
 - 后台 Dispatcher 广播。
@@ -526,7 +522,7 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 - `route --record` 自动 Session 录制模式。
 - FastAPI 本地 HTTP 服务和 WebSocket 实时广播。
 - “可视化”和“设置”双入口门户。
-- Web 设置持久化、端口枚举及 MIDI 路由启停。
+- Web 设置持久化、只读固定端口、驱动安装提示及 MIDI 路由启停。
 - MIDI 瀑布流、钢琴键盘、力度、Sustain、当前按键和基础和弦显示。
 - 每个 WebSocket 客户端独立有界队列和慢客户端丢弃策略。
 - 程序目录下 `data\config.json` 用户配置存储；EXE 模式对应 EXE 所在目录。
@@ -534,30 +530,24 @@ Digital Piano → python-rtmidi → loopMIDI → NanoHost
 - PyInstaller 单文件 Windows EXE 及内置 Web 静态资源。
 - WebSocket 运行库作为正式依赖并随 EXE 打包，Uvicorn 使用 `websockets-sansio` 实现。
 - 门户、设置页和可视化页采用亮色极简主题，统一使用圆角卡片、轻边框、克制阴影和高辨识度状态色。
-- 22 项事件解析、广播隔离、录制、状态分析、路径和 Web API/WebSocket 测试。
+- 27 项事件解析、广播隔离、录制、状态分析、虚拟路由、路径和 Web API/WebSocket 测试。
 
 自动化测试结果：
 
 ```text
-22 passed
+27 passed
 ```
 
-当前 Windows MIDI 枚举结果：
+本机 teVirtualMIDI 集成验证结果：
 
 ```text
-MIDI inputs:
-  [0] test 0
-MIDI outputs:
-  [0] Microsoft GS Wavetable Synth 0
-  [1] test 1
+启动前：无 Piano Telemetry 动态端口
+启动后：Piano Telemetry Input → Piano Telemetry Output
+实测：Note On / Note Off 各 1 条，接收、转发、观察发布均成功
+停止后：两个动态端口均消失
 ```
 
-当前已经可以枚举名为 `test` 的虚拟 MIDI 端口，但电钢琴不在现场，因此真实 Phase 0 硬件链路验证仍未完成。下一次验证前需要：
-
-1. 在 loopMIDI 中创建并保持一个端口，例如 `Piano Telemetry Out`。
-2. 连接并开启电钢琴，确认其 Windows MIDI 驱动已经就绪。
-3. 再运行 `python -m piano_telemetry ports` 检查两个端口。
-4. 使用 `python -m piano_telemetry route --input "输入端口" --output "Piano Telemetry Out"` 开始真实透传。
+当前已经完成测试脚本 → 动态输入端口 → 实时路由 → 动态输出端口的验证。电钢琴不在现场，因此真实硬件输入链路仍需在设备接回后单独设计和验证；当前固定输入端口首先服务于软件测试源。
 
 ### EXE 验证
 

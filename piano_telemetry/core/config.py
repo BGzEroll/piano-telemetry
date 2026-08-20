@@ -25,8 +25,6 @@ def default_sessions_dir() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
-    input_port: str | None = None
-    output_port: str | None = None
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -36,12 +34,6 @@ class AppSettings:
     def from_dict(cls, payload: dict[str, object]) -> "AppSettings":
         allowed = {field.name for field in fields(cls)}
         values = {key: value for key, value in payload.items() if key in allowed}
-        for key in ("input_port", "output_port"):
-            value = values.get(key)
-            if value is not None and not isinstance(value, str):
-                values[key] = None
-            elif isinstance(value, str):
-                values[key] = value.strip() or None
         for key in (
             "receive_sysex",
             "receive_clock",

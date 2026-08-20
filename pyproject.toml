@@ -30,7 +30,7 @@ piano-telemetry = "piano_telemetry.app:main"
 include = ["piano_telemetry*"]
 
 [tool.setuptools.package-data]
-piano_telemetry = ["web/*.html", "web/static/*.css", "web/static/*.js"]
+piano_telemetry = ["web/*.html", "web/static/*.css", "web/static/*.js", "web/static/*.svg"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -15,13 +15,11 @@ from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.controller import MidiController
 from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.midi.event import MidiEvent
-from piano_telemetry.midi.ports import list_midi_ports
+from piano_telemetry.midi.virtual_midi import virtual_midi_status
 from piano_telemetry.web_hub import WebEventHub
 
 
 class SettingsPayload(BaseModel):
-    input_port: str | None = None
-    output_port: str | None = None
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -32,10 +30,14 @@ def create_web_app(
     *,
     settings_store: SettingsStore | None = None,
     dispatcher: EventDispatcher[MidiEvent] | None = None,
+    virtual_status_provider=virtual_midi_status,
 ):
     store = settings_store or SettingsStore()
     event_dispatcher = dispatcher or EventDispatcher[MidiEvent](ingress_capacity=4096)
-    controller = MidiController(event_dispatcher)
+    controller = MidiController(
+        event_dispatcher,
+        status_provider=virtual_status_provider,
+    )
     hub = WebEventHub(event_dispatcher)
     web_root = Path(__file__).resolve().parent / "web"
 
@@ -81,12 +83,9 @@ def create_web_app(
         return settings.to_dict()
 
     @app.get("/api/midi/ports")
-    async def midi_ports() -> dict[str, list[str]]:
-        try:
-            ports = await asyncio.to_thread(list_midi_ports)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return {"inputs": list(ports.inputs), "outputs": list(ports.outputs)}
+    async def midi_ports() -> dict[str, object]:
+        driver_status = await asyncio.to_thread(virtual_status_provider)
+        return driver_status.to_dict()
 
     @app.post("/api/midi/start")
     async def start_midi() -> dict[str, object]:

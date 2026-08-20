@@ -75,6 +75,9 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 select { width: 100%; min-height: 46px; color: var(--text); background: #fafcfb; border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0 13px; outline: none; transition: border-color .2s, box-shadow .2s, background .2s; }
 select:hover { background: #fff; }
 select:focus { border-color: rgba(22,140,114,.55); box-shadow: 0 0 0 4px rgba(22,140,114,.1); background: #fff; }
+.managed-port-name { display: flex; align-items: center; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-md); background: #fafcfb; color: var(--text); font: 650 14px/1 ui-monospace, "Cascadia Mono", monospace; }
+.driver-install-link { display: inline-flex; margin-top: 10px; color: var(--red); font-size: 12px; font-weight: 700; }
+.driver-install-link[hidden] { display: none; }
 .toggle-list { display: grid; }
 .toggle-row { min-height: 70px; display: flex; justify-content: space-between; align-items: center; margin: 0 -12px; padding: 0 12px; border-top: 1px solid var(--line); border-radius: var(--radius-sm); cursor: pointer; transition: background .18s; }
 .toggle-row:first-child { border-top: 0; }
@@ -93,7 +96,7 @@ select:focus { border-color: rgba(22,140,114,.55); box-shadow: 0 0 0 4px rgba(22
 .button.success { color: var(--green); border-color: rgba(22,140,114,.24); background: rgba(22,140,114,.06); }
 .button.danger { color: var(--red); border-color: rgba(221,100,100,.24); background: rgba(221,100,100,.055); }
 .button.ghost { color: var(--muted); background: transparent; }
-.button:disabled { opacity: .4; cursor: wait; }
+.button:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
 .inline-message, .action-message { color: var(--muted); font-size: 12px; }
 .inline-message { margin-top: 18px; }
 .message-error { color: var(--red); }
