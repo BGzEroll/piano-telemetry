@@ -2,14 +2,40 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from piano_telemetry.core.config import SettingsStore
+from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.midi.event import MidiEvent
+from piano_telemetry.midi.ports import MidiPorts
 from piano_telemetry.midi.virtual_midi import (
     VIRTUAL_INPUT_PORT_NAME,
     VIRTUAL_OUTPUT_PORT_NAME,
     VirtualMidiStatus,
 )
 from piano_telemetry.web_server import create_web_app
+
+
+class FakeMetrics:
+    def snapshot(self) -> dict[str, int]:
+        return {}
+
+
+class TrackingRouter:
+    instances = []
+
+    def __init__(self, config, dispatcher) -> None:
+        self.config = config
+        self.dispatcher = dispatcher
+        self.input_name = None
+        self.output_name = None
+        self.metrics = FakeMetrics()
+        self.stopped = False
+        self.__class__.instances.append(self)
+
+    def start(self) -> None:
+        self.input_name = self.config.input_port
+        self.output_name = self.config.output_port
+
+    def stop(self) -> None:
+        self.stopped = True
 
 
 def available_driver() -> VirtualMidiStatus:
@@ -20,23 +46,37 @@ def missing_driver() -> VirtualMidiStatus:
     return VirtualMidiStatus(available=False, message="请先安装 teVirtualMIDI")
 
 
+def available_ports() -> MidiPorts:
+    return MidiPorts(
+        inputs=("Digital Piano", "Piano Telemetry Output 0"),
+        outputs=(),
+    )
+
+
 def test_portal_settings_and_visualization_are_served(tmp_path: Path) -> None:
     app = create_web_app(
         settings_store=SettingsStore(tmp_path / "config.json"),
         virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
     )
     with TestClient(app) as client:
         for path in ("/", "/settings", "/visualization", "/static/app.css"):
             response = client.get(path)
             assert response.status_code == 200
             assert response.content
+        settings_html = client.get("/settings").text
+        assert 'class="custom-select"' in settings_html
+        assert '<select' not in settings_html
 
 
-def test_settings_api_persists_options_but_not_port_selection(tmp_path: Path) -> None:
+def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) -> None:
     store = SettingsStore(tmp_path / "config.json")
     app = create_web_app(
         settings_store=store,
         virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
     )
     with TestClient(app) as client:
         response = client.put(
@@ -52,11 +92,12 @@ def test_settings_api_persists_options_but_not_port_selection(tmp_path: Path) ->
         )
         assert response.status_code == 200
         settings = client.get("/api/settings").json()
-        assert "input_port" not in settings
+        assert settings["input_port"] == "Test Input"
         assert settings["receive_clock"] is True
         ports = client.get("/api/midi/ports").json()
         assert ports["input_port"] == VIRTUAL_INPUT_PORT_NAME
         assert ports["output_port"] == VIRTUAL_OUTPUT_PORT_NAME
+        assert ports["inputs"] == [VIRTUAL_INPUT_PORT_NAME, "Digital Piano"]
         assert ports["available"] is True
     assert store.load().receive_clock is True
 
@@ -65,6 +106,8 @@ def test_websocket_receives_independent_telemetry(tmp_path: Path) -> None:
     app = create_web_app(
         settings_store=SettingsStore(tmp_path / "config.json"),
         virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
     )
     with TestClient(app) as client:
         with client.websocket_connect("/ws") as websocket:
@@ -85,6 +128,8 @@ def test_missing_virtual_midi_driver_prevents_start(tmp_path: Path) -> None:
     app = create_web_app(
         settings_store=SettingsStore(tmp_path / "config.json"),
         virtual_status_provider=missing_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
     )
     with TestClient(app) as client:
         ports = client.get("/api/midi/ports").json()
@@ -94,3 +139,48 @@ def test_missing_virtual_midi_driver_prevents_start(tmp_path: Path) -> None:
         response = client.post("/api/midi/start")
         assert response.status_code == 409
         assert "安装" in response.json()["detail"]
+
+
+def test_startup_falls_back_to_virtual_input_starts_and_stop_closes_router(
+    tmp_path: Path,
+) -> None:
+    TrackingRouter.instances.clear()
+    store = SettingsStore(tmp_path / "config.json")
+    store.save(AppSettings(input_port="Disconnected Piano", receive_clock=True))
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=TrackingRouter,
+    )
+
+    with TestClient(app) as client:
+        status = client.get("/api/status").json()
+        assert status["running"] is True
+        assert status["input_port"] == VIRTUAL_INPUT_PORT_NAME
+        assert store.load() == AppSettings(
+            input_port=VIRTUAL_INPUT_PORT_NAME,
+            receive_clock=True,
+        )
+
+        stopped = client.post("/api/midi/stop").json()
+        assert stopped["running"] is False
+        assert TrackingRouter.instances[-1].stopped is True
+
+
+def test_startup_keeps_an_available_saved_physical_input(tmp_path: Path) -> None:
+    TrackingRouter.instances.clear()
+    store = SettingsStore(tmp_path / "config.json")
+    store.save(AppSettings(input_port="Digital Piano"))
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=TrackingRouter,
+    )
+
+    with TestClient(app) as client:
+        status = client.get("/api/status").json()
+        assert status["running"] is True
+        assert status["input_port"] == "Digital Piano"
+        assert store.load().input_port == "Digital Piano"

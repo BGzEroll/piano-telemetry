@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import webbrowser
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from threading import Timer
 
@@ -15,11 +16,18 @@ from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.controller import MidiController
 from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.midi.event import MidiEvent
-from piano_telemetry.midi.virtual_midi import virtual_midi_status
+from piano_telemetry.midi.ports import list_midi_ports
+from piano_telemetry.midi.router import MidiRouter
+from piano_telemetry.midi.virtual_midi import (
+    VIRTUAL_INPUT_PORT_NAME,
+    VIRTUAL_OUTPUT_PORT_NAME,
+    virtual_midi_status,
+)
 from piano_telemetry.web_hub import WebEventHub
 
 
 class SettingsPayload(BaseModel):
+    input_port: str = VIRTUAL_INPUT_PORT_NAME
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -31,11 +39,15 @@ def create_web_app(
     settings_store: SettingsStore | None = None,
     dispatcher: EventDispatcher[MidiEvent] | None = None,
     virtual_status_provider=virtual_midi_status,
+    midi_ports_provider=list_midi_ports,
+    router_factory=MidiRouter,
+    auto_start_midi: bool = True,
 ):
     store = settings_store or SettingsStore()
     event_dispatcher = dispatcher or EventDispatcher[MidiEvent](ingress_capacity=4096)
     controller = MidiController(
         event_dispatcher,
+        router_factory=router_factory,
         status_provider=virtual_status_provider,
     )
     hub = WebEventHub(event_dispatcher)
@@ -45,6 +57,18 @@ def create_web_app(
     async def lifespan(_: FastAPI):
         event_dispatcher.start()
         hub.start(asyncio.get_running_loop())
+        if auto_start_midi:
+            try:
+                settings = await asyncio.to_thread(
+                    _load_startable_settings,
+                    store,
+                    midi_ports_provider,
+                )
+                await asyncio.to_thread(controller.start, settings)
+            except Exception:
+                # Keep the Web UI available so the user can inspect the error
+                # and retry after installing the driver or releasing a port.
+                pass
         try:
             yield
         finally:
@@ -85,12 +109,27 @@ def create_web_app(
     @app.get("/api/midi/ports")
     async def midi_ports() -> dict[str, object]:
         driver_status = await asyncio.to_thread(virtual_status_provider)
-        return driver_status.to_dict()
+        result = driver_status.to_dict()
+        try:
+            result["inputs"] = await asyncio.to_thread(
+                _selectable_input_names,
+                midi_ports_provider,
+            )
+            result["port_scan_error"] = None
+        except Exception as exc:
+            result["inputs"] = [VIRTUAL_INPUT_PORT_NAME]
+            result["port_scan_error"] = str(exc)
+        return result
 
     @app.post("/api/midi/start")
     async def start_midi() -> dict[str, object]:
         try:
-            return await asyncio.to_thread(controller.start, store.load())
+            settings = await asyncio.to_thread(
+                _load_startable_settings,
+                store,
+                midi_ports_provider,
+            )
+            return await asyncio.to_thread(controller.start, settings)
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -129,6 +168,47 @@ def create_web_app(
             hub.unregister(queue)
 
     return app
+
+
+def _matches_managed_port(name: str, managed_name: str) -> bool:
+    folded = name.casefold()
+    managed = managed_name.casefold()
+    return folded == managed or folded.startswith(f"{managed} ")
+
+
+def _selectable_input_names(midi_ports_provider) -> list[str]:
+    discovered = midi_ports_provider()
+    selectable_inputs = [VIRTUAL_INPUT_PORT_NAME]
+    for name in discovered.inputs:
+        if _matches_managed_port(name, VIRTUAL_OUTPUT_PORT_NAME):
+            continue
+        if name not in selectable_inputs:
+            selectable_inputs.append(name)
+    return selectable_inputs
+
+
+def _load_startable_settings(
+    store: SettingsStore,
+    midi_ports_provider,
+) -> AppSettings:
+    settings = store.load()
+    try:
+        inputs = _selectable_input_names(midi_ports_provider)
+    except Exception:
+        inputs = [VIRTUAL_INPUT_PORT_NAME]
+
+    selected = next(
+        (
+            name
+            for name in inputs
+            if name.casefold() == settings.input_port.casefold()
+        ),
+        VIRTUAL_INPUT_PORT_NAME,
+    )
+    if selected != settings.input_port:
+        settings = replace(settings, input_port=selected)
+        store.save(settings)
+    return settings
 
 
 def run_web_server(

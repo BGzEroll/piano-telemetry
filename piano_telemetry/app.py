@@ -30,6 +30,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("ports", help="list available MIDI input and output ports")
 
     route = subparsers.add_parser("route", help="run the managed virtual MIDI route")
+    route.add_argument(
+        "--input",
+        default=VIRTUAL_INPUT_PORT_NAME,
+        help="physical input name, or Piano Telemetry Input for scripts",
+    )
     route.add_argument("--ingress-capacity", type=int, default=4096)
     route.add_argument("--stats-interval", type=float, default=5.0)
     route.add_argument("--receive-sysex", action="store_true")
@@ -92,7 +97,7 @@ def _run_router(args: argparse.Namespace) -> int:
     )
     router = MidiRouter(
         MidiRouterConfig(
-            input_port=VIRTUAL_INPUT_PORT_NAME,
+            input_port=args.input,
             output_port=VIRTUAL_OUTPUT_PORT_NAME,
             managed_virtual_ports=True,
             receive_sysex=args.receive_sysex,

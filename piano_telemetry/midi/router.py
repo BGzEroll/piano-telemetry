@@ -98,19 +98,53 @@ class MidiRouter:
         midi_out = driver.create_output_port(VIRTUAL_OUTPUT_PORT_NAME)
         self._midi_out = midi_out
         self.output_name = VIRTUAL_OUTPUT_PORT_NAME
-        self.input_name = VIRTUAL_INPUT_PORT_NAME
         try:
-            midi_in = driver.create_input_port(
-                VIRTUAL_INPUT_PORT_NAME,
-                self._handle_virtual_message,
-            )
+            if self.config.input_port.casefold() == VIRTUAL_INPUT_PORT_NAME.casefold():
+                midi_in = driver.create_input_port(
+                    VIRTUAL_INPUT_PORT_NAME,
+                    self._handle_virtual_message,
+                )
+                input_name = VIRTUAL_INPUT_PORT_NAME
+            else:
+                midi_in, input_name = self._open_physical_input(self.config.input_port)
+            self._midi_in = midi_in
+            self.input_name = input_name
         except Exception:
+            if self._midi_in is not None:
+                try:
+                    self._midi_in.cancel_callback()
+                    self._midi_in.close_port()
+                except Exception:
+                    pass
+            self._midi_in = None
             self._midi_out = None
             self.output_name = None
             self.input_name = None
             midi_out.close_port()
             raise
-        self._midi_in = midi_in
+
+    def _open_physical_input(self, selector: str) -> tuple[Any, str]:
+        rtmidi = _load_rtmidi()
+        midi_in = rtmidi.MidiIn()
+        try:
+            input_ports = tuple(midi_in.get_ports())
+            input_index = resolve_port(selector, input_ports, kind="input")
+            input_name = input_ports[input_index]
+            midi_in.ignore_types(
+                sysex=not self.config.receive_sysex,
+                timing=not self.config.receive_clock,
+                active_sense=not self.config.receive_active_sensing,
+            )
+            midi_in.set_callback(self._midi_callback)
+            midi_in.open_port(input_index, "Piano Telemetry Physical Input")
+        except Exception:
+            try:
+                midi_in.cancel_callback()
+                midi_in.close_port()
+            except Exception:
+                pass
+            raise
+        return midi_in, input_name
 
     def stop(self) -> None:
         midi_in = self._midi_in
@@ -139,9 +173,16 @@ class MidiRouter:
             except Exception:
                 self.metrics.shutdown_errors_total += 1
 
+        self.input_name = None
+        self.output_name = None
+
     def _midi_callback(self, event: tuple[list[int], float], _: object | None = None) -> None:
         message, _delta_time = event
-        self._handle_message(message, captured_monotonic_ns=perf_counter_ns())
+        self._handle_message(
+            message,
+            captured_monotonic_ns=perf_counter_ns(),
+            source_port=self.input_name or self.config.input_port,
+        )
 
     def _handle_virtual_message(self, message: list[int]) -> None:
         if not message:
@@ -153,9 +194,19 @@ class MidiRouter:
             return
         if status == 0xFE and not self.config.receive_active_sensing:
             return
-        self._handle_message(message, captured_monotonic_ns=perf_counter_ns())
+        self._handle_message(
+            message,
+            captured_monotonic_ns=perf_counter_ns(),
+            source_port=VIRTUAL_INPUT_PORT_NAME,
+        )
 
-    def _handle_message(self, message: list[int], *, captured_monotonic_ns: int) -> None:
+    def _handle_message(
+        self,
+        message: list[int],
+        *,
+        captured_monotonic_ns: int,
+        source_port: str | None = None,
+    ) -> None:
         """Forward first, then make a best-effort observer publication."""
         self.metrics.events_received_total += 1
         midi_out = self._midi_out
@@ -174,7 +225,7 @@ class MidiRouter:
             telemetry_event = MidiEvent.from_raw(
                 seq=next(self._sequence),
                 captured_monotonic_ns=captured_monotonic_ns,
-                source_port=self.input_name or self.config.input_port,
+                source_port=source_port or self.input_name or self.config.input_port,
                 raw=message,
             )
             self.dispatcher.publish_nowait(telemetry_event)

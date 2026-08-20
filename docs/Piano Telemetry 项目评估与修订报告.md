@@ -11,7 +11,7 @@
 1. 事件分发采用广播订阅模型，每个订阅者拥有独立队列，不使用多个模块竞争消费同一个队列。
 2. MIDI 实时透传是最高优先级。Recorder、Analyzer、Web 任一模块变慢时均允许丢失观察数据，不得向 MIDI 转发链路施加反压。
 3. 当前版本移除 OpenClaw、AI 教练、长期记忆以及为 OpenClaw 单独设计的 TCP Query/Control API。
-4. Web 与默认 CLI 路由改用 teVirtualMIDI 动态创建固定双端口；不再要求用户选择或预建 loopMIDI 端口。
+4. Web 与 CLI 可自由选择物理电钢输入或程序托管的 `Piano Telemetry Input`；输出固定为 teVirtualMIDI 动态创建的 `Piano Telemetry Output`。
 
 调整后，第一阶段产品定位为：
 
@@ -61,7 +61,7 @@
 
 ### 3.1 当前范围
 
-- 固定的 `Piano Telemetry Input` 软件 MIDI 输入。
+- 可自由选择电钢物理输入或 `Piano Telemetry Input` 软件 MIDI 输入。
 - MIDI 低延迟透传到固定的 `Piano Telemetry Output`。
 - NanoHost / VSTi 正常发声。
 - Session 管理。
@@ -406,12 +406,14 @@ piano_telemetry/
 目标：验证真实硬件链路，不建设 Web 和 Recorder。
 
 ```text
-MIDI Producer → Piano Telemetry Input → teVirtualMIDI → Piano Telemetry Output → NanoHost
+电钢 → 物理 MIDI 输入 ─┐
+                       ├→ Piano Telemetry Output → NanoHost
+测试脚本 → Piano Telemetry Input ─┘
 ```
 
 验收内容：
 
-- 启动时正确创建固定输入/输出端口，停止时自动删除。
+- 始终动态创建固定输出；选择软件输入时同时创建 `Piano Telemetry Input`，停止时自动删除动态端口。
 - NanoHost 能持续正常发声。
 - Note、力度和 Sustain 正确透传。
 - 程序可以处理端口不存在、端口占用和设备中途断开。
@@ -505,7 +507,7 @@ MIDI Producer → Piano Telemetry Input → teVirtualMIDI → Piano Telemetry Ou
 - Python 项目和命令行入口。
 - 统一、不可变 `MidiEvent` 模型。
 - teVirtualMIDI 驱动可用性检测。
-- 固定双端口的动态创建、优先透传和自动销毁。
+- 可选物理/托管虚拟输入、固定虚拟输出、优先透传和动态端口自动销毁。
 - SysEx、MIDI Clock、Active Sensing 的显式接收开关。
 - 单一有界 Ingress Queue。
 - 后台 Dispatcher 广播。
@@ -522,7 +524,8 @@ MIDI Producer → Piano Telemetry Input → teVirtualMIDI → Piano Telemetry Ou
 - `route --record` 自动 Session 录制模式。
 - FastAPI 本地 HTTP 服务和 WebSocket 实时广播。
 - “可视化”和“设置”双入口门户。
-- Web 设置持久化、只读固定端口、驱动安装提示及 MIDI 路由启停。
+- Web 输入端口选择与持久化、固定输出展示、驱动安装提示及 MIDI 路由启停。
+- Web 服务启动时自动校验保存的输入端口：端口不存在则持久化回退到 `Piano Telemetry Input`，随后自动启动 MIDI。
 - MIDI 瀑布流、钢琴键盘、力度、Sustain、当前按键和基础和弦显示。
 - 每个 WebSocket 客户端独立有界队列和慢客户端丢弃策略。
 - 程序目录下 `data\config.json` 用户配置存储；EXE 模式对应 EXE 所在目录。
@@ -547,7 +550,7 @@ MIDI Producer → Piano Telemetry Input → teVirtualMIDI → Piano Telemetry Ou
 停止后：两个动态端口均消失
 ```
 
-当前已经完成测试脚本 → 动态输入端口 → 实时路由 → 动态输出端口的验证。电钢琴不在现场，因此真实硬件输入链路仍需在设备接回后单独设计和验证；当前固定输入端口首先服务于软件测试源。
+当前已经完成测试脚本 → 动态输入端口 → 实时路由 → 动态输出端口的验证，并用模拟 RtMidi 设备覆盖了物理输入选择与清理逻辑。电钢琴不在现场，因此真实硬件输入链路仍需在设备接回后做兼容性和断连验证。
 
 ### EXE 验证
 

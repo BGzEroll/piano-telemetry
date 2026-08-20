@@ -37,10 +37,11 @@ class MidiController:
                 return self.status()
             driver_status = self._status_provider()
             if not driver_status.available:
+                self._last_error = driver_status.message
                 raise RuntimeError(driver_status.message)
             router = self._router_factory(
                 MidiRouterConfig(
-                    input_port=VIRTUAL_INPUT_PORT_NAME,
+                    input_port=settings.input_port,
                     output_port=VIRTUAL_OUTPUT_PORT_NAME,
                     managed_virtual_ports=True,
                     receive_sysex=settings.receive_sysex,

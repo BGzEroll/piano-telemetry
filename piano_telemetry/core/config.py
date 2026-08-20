@@ -7,6 +7,8 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from threading import RLock
 
+from piano_telemetry.midi.virtual_midi import VIRTUAL_INPUT_PORT_NAME
+
 
 def application_directory() -> Path:
     """Directory containing the EXE, or the current directory in source mode."""
@@ -25,6 +27,7 @@ def default_sessions_dir() -> Path:
 
 @dataclass(frozen=True, slots=True)
 class AppSettings:
+    input_port: str = VIRTUAL_INPUT_PORT_NAME
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -34,6 +37,13 @@ class AppSettings:
     def from_dict(cls, payload: dict[str, object]) -> "AppSettings":
         allowed = {field.name for field in fields(cls)}
         values = {key: value for key, value in payload.items() if key in allowed}
+        if "input_port" in values:
+            input_port = values["input_port"]
+            values["input_port"] = (
+                input_port.strip()
+                if isinstance(input_port, str) and input_port.strip()
+                else VIRTUAL_INPUT_PORT_NAME
+            )
         for key in (
             "receive_sysex",
             "receive_clock",

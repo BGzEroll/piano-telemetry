@@ -32,14 +32,20 @@
           <span class="step-number">01</span>
           <h2>MIDI 路由</h2>
         </div>
-        <button id="refresh-ports" class="button ghost" type="button">检测驱动</button>
+        <button id="refresh-ports" class="button ghost" type="button">刷新端口</button>
       </div>
 
       <div class="form-grid">
         <div class="field">
           <span>输入端口</span>
-          <div id="input-port" class="managed-port-name">Piano Telemetry Input</div>
-          <small>由程序创建，测试脚本或其他 MIDI 软件向此端口发送。</small>
+          <div id="input-port" class="custom-select">
+            <button id="input-port-trigger" class="select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="input-port-options">
+              <span id="input-port-value">Piano Telemetry Input</span>
+              <i class="select-chevron" aria-hidden="true"></i>
+            </button>
+            <div id="input-port-options" class="select-options" role="listbox" aria-label="MIDI 输入端口" hidden></div>
+          </div>
+          <small>选择电钢输入；使用测试脚本时选择 Piano Telemetry Input。</small>
         </div>
         <div class="route-arrow" aria-hidden="true">→</div>
         <div class="field">
