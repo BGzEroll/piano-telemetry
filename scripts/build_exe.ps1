@@ -13,4 +13,32 @@ if ($LASTEXITCODE -ne 0) {
     throw "PyInstaller build failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "Built: $ProjectRoot\dist\PianoTelemetry.exe"
+$BuiltExe = "$ProjectRoot\dist\Piano Telemetry.exe"
+
+if (-not ('PianoTelemetry.ShellIconRefresh' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace PianoTelemetry {
+    public static class ShellIconRefresh {
+        [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+        private static extern void SHChangeNotify(
+            uint eventId,
+            uint flags,
+            string item1,
+            IntPtr item2
+        );
+
+        public static void Refresh(string path) {
+            const uint SHCNE_UPDATEITEM = 0x00002000;
+            const uint SHCNF_PATHW = 0x0005;
+            SHChangeNotify(SHCNE_UPDATEITEM, SHCNF_PATHW, path, IntPtr.Zero);
+        }
+    }
+}
+'@
+}
+
+[PianoTelemetry.ShellIconRefresh]::Refresh($BuiltExe)
+Write-Host "Built: $BuiltExe"

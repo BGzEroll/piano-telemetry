@@ -28,8 +28,15 @@ a = Analysis(
     [str(project_root / "launcher.py")],
     pathex=[str(project_root)],
     binaries=bundled_dlls,
-    datas=[(str(web_assets), "piano_telemetry/web")],
-    hiddenimports=collect_submodules("uvicorn") + collect_submodules("websockets"),
+    datas=[
+        (str(web_assets), "piano_telemetry/web"),
+        (str(app_icon), "assets"),
+    ],
+    hiddenimports=(
+        collect_submodules("uvicorn")
+        + collect_submodules("websockets")
+        + ["pystray._win32"]
+    ),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -45,7 +52,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name="PianoTelemetry",
+    name="Piano Telemetry",
     icon=str(app_icon),
     debug=False,
     bootloader_ignore_signals=False,
@@ -53,7 +60,7 @@ exe = EXE(
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,
+    console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
