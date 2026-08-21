@@ -203,17 +203,6 @@ function drawCurrentStaff(width, height) {
   const noteX = staffStart + (staffEnd - staffStart) * .58;
 
   waterfallContext.save();
-  waterfallContext.shadowColor = 'rgba(24,52,44,.08)';
-  waterfallContext.shadowBlur = 18;
-  waterfallContext.fillStyle = 'rgba(255,255,255,.9)';
-  waterfallContext.beginPath();
-  waterfallContext.roundRect(left, top, panelWidth, panelHeight, 16);
-  waterfallContext.fill();
-  waterfallContext.shadowBlur = 0;
-  waterfallContext.strokeStyle = 'rgba(16,22,20,.14)';
-  waterfallContext.lineWidth = 1;
-  waterfallContext.stroke();
-
   waterfallContext.strokeStyle = 'rgba(16,22,20,.72)';
   waterfallContext.lineWidth = 1.35;
   drawStaffLines(staffStart, staffEnd, trebleBottom, lineGap);
