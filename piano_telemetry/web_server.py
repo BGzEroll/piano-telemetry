@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import shutil
 import webbrowser
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -10,7 +11,7 @@ from threading import Timer
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.controller import MidiController
@@ -23,6 +24,11 @@ from piano_telemetry.midi.virtual_midi import (
     VIRTUAL_OUTPUT_PORT_NAME,
     virtual_midi_status,
 )
+from piano_telemetry.recorder.session_recorder import (
+    SessionRecorder,
+    SessionResult,
+    SessionState,
+)
 from piano_telemetry.web_hub import WebEventHub
 
 
@@ -34,6 +40,16 @@ class SettingsPayload(BaseModel):
     panic_on_stop: bool = True
 
 
+class RecordingStartPayload(BaseModel):
+    piece: str | None = Field(default=None, max_length=200)
+    target_bpm: float | None = Field(default=None, gt=0, le=400)
+
+
+class RecordingStopPayload(BaseModel):
+    save_name: str | None = Field(default=None, max_length=100)
+    discard: bool = False
+
+
 def create_web_app(
     *,
     settings_store: SettingsStore | None = None,
@@ -41,6 +57,7 @@ def create_web_app(
     virtual_status_provider=virtual_midi_status,
     midi_ports_provider=list_midi_ports,
     router_factory=MidiRouter,
+    recorder: SessionRecorder | None = None,
     auto_start_midi: bool = True,
 ):
     store = settings_store or SettingsStore()
@@ -51,12 +68,17 @@ def create_web_app(
         status_provider=virtual_status_provider,
     )
     hub = WebEventHub(event_dispatcher)
+    session_recorder = recorder or SessionRecorder(
+        event_dispatcher,
+        sessions_dir=store.path.parent / "sessions",
+    )
     web_root = Path(__file__).resolve().parent / "web"
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
         event_dispatcher.start()
         hub.start(asyncio.get_running_loop())
+        await asyncio.to_thread(session_recorder.start)
         if auto_start_midi:
             try:
                 settings = await asyncio.to_thread(
@@ -72,15 +94,21 @@ def create_web_app(
         try:
             yield
         finally:
-            await asyncio.to_thread(controller.stop)
-            hub.stop()
-            event_dispatcher.stop(drain=True)
+            try:
+                await asyncio.to_thread(controller.stop)
+            finally:
+                try:
+                    await asyncio.to_thread(session_recorder.close)
+                finally:
+                    hub.stop()
+                    event_dispatcher.stop(drain=True)
 
     app = FastAPI(title="Piano Telemetry", version="0.1.0", lifespan=lifespan)
     app.state.settings_store = store
     app.state.dispatcher = event_dispatcher
     app.state.midi_controller = controller
     app.state.web_hub = hub
+    app.state.session_recorder = session_recorder
 
     app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
 
@@ -145,7 +173,74 @@ def create_web_app(
 
     @app.post("/api/midi/stop")
     async def stop_midi() -> dict[str, object]:
-        return await asyncio.to_thread(controller.stop)
+        result = await asyncio.to_thread(controller.stop)
+        if session_recorder.state is SessionState.RECORDING:
+            await asyncio.to_thread(session_recorder.stop_session)
+        return result
+
+    @app.get("/api/recording")
+    async def recording_status() -> dict[str, object]:
+        return session_recorder.status()
+
+    @app.post("/api/recording/start")
+    async def start_recording(
+        payload: RecordingStartPayload | None = None,
+    ) -> dict[str, object]:
+        controller_status = await asyncio.to_thread(controller.status)
+        if not controller_status["running"]:
+            raise HTTPException(status_code=409, detail="请先启动 MIDI 路由")
+        details = payload or RecordingStartPayload()
+        piece = details.piece.strip() if details.piece else None
+        try:
+            await asyncio.to_thread(
+                session_recorder.start_session,
+                piece=piece or None,
+                target_bpm=details.target_bpm,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return session_recorder.status()
+
+    @app.post("/api/recording/stop")
+    async def stop_recording(
+        choice: RecordingStopPayload | None = None,
+    ) -> dict[str, object]:
+        selection = choice or RecordingStopPayload()
+        if selection.discard and selection.save_name:
+            raise HTTPException(
+                status_code=409,
+                detail="保存名称和不保存不能同时选择",
+            )
+        save_name: str | None = None
+        try:
+            if selection.save_name is not None:
+                save_name = _validate_recording_save_name(selection.save_name)
+                target = session_recorder.sessions_dir / save_name
+                if target.exists():
+                    raise ValueError("保存名称已存在，请换一个名称")
+            result = await asyncio.to_thread(session_recorder.stop_session)
+            if selection.discard:
+                await asyncio.to_thread(
+                    _discard_recording_directory,
+                    result,
+                    session_recorder.sessions_dir,
+                )
+            elif save_name is not None:
+                result = await asyncio.to_thread(
+                    _rename_recording_directory,
+                    result,
+                    session_recorder.sessions_dir,
+                    save_name,
+                )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        payload = session_recorder.status()
+        payload["result"] = _recording_result_payload(
+            result,
+            discarded=selection.discard,
+            save_name=save_name,
+        )
+        return payload
 
     @app.get("/api/status")
     async def status() -> dict[str, object]:
@@ -153,6 +248,7 @@ def create_web_app(
         result["websocket_clients"] = hub.client_count
         result["websocket_drop_total"] = hub.client_drop_total
         result["config_path"] = str(store.path)
+        result["recording"] = session_recorder.status()
         return result
 
     @app.get("/api/state")
@@ -184,6 +280,83 @@ def _matches_managed_port(name: str, managed_name: str) -> bool:
     folded = name.casefold()
     managed = managed_name.casefold()
     return folded == managed or folded.startswith(f"{managed} ")
+
+
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
+
+
+def _validate_recording_save_name(value: str) -> str:
+    name = value.strip()
+    if not name:
+        raise ValueError("请输入保存名称")
+    if name in {".", ".."} or name.endswith("."):
+        raise ValueError("保存名称无效")
+    if any(ord(character) < 32 or character in '<>:"/\\|?*' for character in name):
+        raise ValueError("保存名称包含 Windows 文件夹不支持的字符")
+    if name.split(".", 1)[0].upper() in _WINDOWS_RESERVED_NAMES:
+        raise ValueError("保存名称是 Windows 保留名称")
+    return name
+
+
+def _recording_source_directory(
+    result: SessionResult,
+    sessions_dir: Path,
+) -> tuple[Path, Path]:
+    root = sessions_dir.resolve()
+    source = result.directory.resolve()
+    if source.parent != root or not source.is_dir():
+        raise RuntimeError("录制目录不在预期位置，已拒绝文件操作")
+    return root, source
+
+
+def _rename_recording_directory(
+    result: SessionResult,
+    sessions_dir: Path,
+    save_name: str,
+) -> SessionResult:
+    root, source = _recording_source_directory(result, sessions_dir)
+    target = root / save_name
+    if target.exists():
+        raise ValueError("保存名称已存在，请换一个名称")
+    source.rename(target)
+    return replace(result, directory=target)
+
+
+def _discard_recording_directory(
+    result: SessionResult,
+    sessions_dir: Path,
+) -> None:
+    _, source = _recording_source_directory(result, sessions_dir)
+    shutil.rmtree(source)
+
+
+def _recording_result_payload(
+    result: SessionResult,
+    *,
+    discarded: bool = False,
+    save_name: str | None = None,
+) -> dict[str, object]:
+    return {
+        "session_id": result.session_id,
+        "directory": None if discarded else str(result.directory.resolve()),
+        "save_name": save_name,
+        "discarded": discarded,
+        "complete": result.complete,
+        "event_count": result.event_count,
+        "sequence_gap_events": result.sequence_gap_events,
+        "ingress_dropped_events": result.ingress_dropped_events,
+        "subscriber_dropped_events": result.subscriber_dropped_events,
+        "midi_exported_events": result.midi_exported_events,
+        "midi_skipped_events": result.midi_skipped_events,
+        "midi_export_error": result.midi_export_error,
+    }
 
 
 def _selectable_input_names(midi_ports_provider) -> list[str]:

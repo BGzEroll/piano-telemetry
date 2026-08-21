@@ -19,7 +19,13 @@
   <main class="visual-shell">
     <header class="visual-header">
       <h1>实时演奏</h1>
-      <div class="live-indicator"><span id="ws-dot"></span><b id="ws-status">连接中</b></div>
+      <div class="visual-actions">
+        <div class="live-indicator"><span id="ws-dot"></span><b id="ws-status">连接中</b></div>
+        <button id="record-toggle" class="record-toggle" type="button">
+          <i aria-hidden="true"></i>
+          <span id="record-label">开始录制</span>
+        </button>
+      </div>
     </header>
 
     <section class="metric-strip">
@@ -36,9 +42,22 @@
 
     <footer class="visual-footer">
       <span id="note-list">当前没有按键</span>
+      <span id="record-message" class="record-message" aria-live="polite"></span>
       <span id="data-warning"></span>
     </footer>
   </main>
+
+  <div id="record-dialog-backdrop" class="record-dialog-backdrop" hidden>
+    <form id="record-dialog" class="record-dialog" role="dialog" aria-modal="true" aria-labelledby="record-save-label">
+      <label id="record-save-label" for="record-save-name">保存名称：</label>
+      <input id="record-save-name" type="text" maxlength="100" autocomplete="off">
+      <span id="record-dialog-error" class="record-dialog-error" aria-live="polite"></span>
+      <div class="record-dialog-actions">
+        <button id="record-save" class="button primary" type="submit">保存</button>
+        <button id="record-discard" class="button danger" type="button">不保存</button>
+      </div>
+    </form>
+  </div>
   <script src="/static/visualization.js"></script>
 </body>
 </html>

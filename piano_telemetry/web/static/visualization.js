@@ -7,6 +7,15 @@ const noteMax = 108;
 const historyMs = 7000;
 const notes = [];
 const active = new Map();
+const recordButton = document.querySelector('#record-toggle');
+const recordLabel = document.querySelector('#record-label');
+const recordMessage = document.querySelector('#record-message');
+const recordDialogBackdrop = document.querySelector('#record-dialog-backdrop');
+const recordDialog = document.querySelector('#record-dialog');
+const recordSaveName = document.querySelector('#record-save-name');
+const recordDialogError = document.querySelector('#record-dialog-error');
+const recordSaveButton = document.querySelector('#record-save');
+const recordDiscardButton = document.querySelector('#record-discard');
 const pitchNotation = [
   {letter: 0, accidental: ''}, {letter: 0, accidental: '♯'},
   {letter: 1, accidental: ''}, {letter: 1, accidental: '♯'},
@@ -16,6 +25,8 @@ const pitchNotation = [
   {letter: 5, accidental: '♯'}, {letter: 6, accidental: ''}
 ];
 let state = {physical_notes: [], sounding_notes: [], sustain: 0, last_velocity: 0, chord: null};
+let recordingState = {recording: false, finalizing: false, started_at: null};
+let recordingDialogOpen = false;
 
 function noteKey(channel, note) { return `${channel ?? 0}:${note}`; }
 
@@ -50,6 +61,110 @@ function updateMetrics(gap) {
 function noteName(note) {
   const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
   return `${names[note % 12]}${Math.floor(note / 12) - 1}`;
+}
+
+function recordingDuration() {
+  if (!recordingState.started_at) return '00:00';
+  const elapsed = Math.max(0, Date.now() - Date.parse(recordingState.started_at));
+  const seconds = Math.floor(elapsed / 1000);
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+  return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}`;
+}
+
+function renderRecordingState(status) {
+  recordingState = status;
+  recordButton.classList.toggle('recording', Boolean(status.recording));
+  recordButton.disabled = Boolean(status.finalizing) || recordingDialogOpen;
+  if (status.finalizing) recordLabel.textContent = '正在保存';
+  else if (status.recording) recordLabel.textContent = `结束录制 · ${recordingDuration()}`;
+  else recordLabel.textContent = '开始录制';
+}
+
+function defaultRecordingName() {
+  const now = new Date();
+  const pad = value => value.toString().padStart(2, '0');
+  return `录制 ${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+}
+
+function openRecordingDialog() {
+  recordingDialogOpen = true;
+  recordDialogBackdrop.hidden = false;
+  recordDialogError.textContent = '';
+  recordSaveName.value = defaultRecordingName();
+  recordButton.disabled = true;
+  requestAnimationFrame(() => { recordSaveName.focus(); recordSaveName.select(); });
+}
+
+function closeRecordingDialog() {
+  recordingDialogOpen = false;
+  recordDialogBackdrop.hidden = true;
+  recordButton.disabled = Boolean(recordingState.finalizing);
+}
+
+async function loadRecordingState() {
+  try {
+    const response = await fetch('/api/recording');
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.detail || '无法读取录制状态');
+    renderRecordingState(status);
+  } catch (error) {
+    recordButton.disabled = true;
+    recordMessage.textContent = error.message;
+    recordMessage.classList.add('error');
+  }
+}
+
+async function toggleRecording() {
+  if (recordingState.recording) {
+    openRecordingDialog();
+    return;
+  }
+  recordButton.disabled = true;
+  recordMessage.textContent = '';
+  recordMessage.classList.remove('error');
+  try {
+    const response = await fetch('/api/recording/start', {method: 'POST'});
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.detail || '录制操作失败');
+    renderRecordingState(status);
+    recordMessage.textContent = '正在录制';
+  } catch (error) {
+    recordButton.disabled = false;
+    recordMessage.textContent = error.message;
+    recordMessage.classList.add('error');
+  }
+}
+
+async function finishRecording(choice) {
+  recordSaveName.disabled = true;
+  recordSaveButton.disabled = true;
+  recordDiscardButton.disabled = true;
+  recordDialogError.textContent = '';
+  try {
+    const response = await fetch('/api/recording/stop', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(choice),
+    });
+    const status = await response.json();
+    if (!response.ok) throw new Error(status.detail || '无法结束录制');
+    renderRecordingState(status);
+    closeRecordingDialog();
+    if (status.result.discarded) {
+      recordMessage.textContent = '本次录制未保存';
+      recordMessage.classList.remove('error');
+    } else {
+      const suffix = status.result.complete ? '' : '，数据可能不完整';
+      recordMessage.textContent = `录制已保存，共 ${status.result.event_count} 个事件${suffix}`;
+      recordMessage.classList.toggle('error', !status.result.complete);
+    }
+  } catch (error) {
+    recordDialogError.textContent = error.message;
+  } finally {
+    recordSaveName.disabled = false;
+    recordSaveButton.disabled = false;
+    recordDiscardButton.disabled = false;
+  }
 }
 
 function resizeCanvas(canvas, context) {
@@ -272,4 +387,20 @@ function connectWebSocket() {
 }
 
 window.addEventListener('resize', () => {});
-connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);
+recordButton.addEventListener('click', toggleRecording);
+recordDialog.addEventListener('submit', event => {
+  event.preventDefault();
+  const saveName = recordSaveName.value.trim();
+  if (!saveName) {
+    recordDialogError.textContent = '请输入保存名称';
+    recordSaveName.focus();
+    return;
+  }
+  finishRecording({save_name: saveName});
+});
+recordDiscardButton.addEventListener('click', () => finishRecording({discard: true}));
+setInterval(() => {
+  if (recordingState.recording) renderRecordingState(recordingState);
+}, 1000);
+setInterval(loadRecordingState, 5000);
+loadRecordingState(); connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);

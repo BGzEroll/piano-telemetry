@@ -92,6 +92,36 @@ class SessionRecorder:
         with self._lock:
             return self._state
 
+    def status(self) -> dict[str, object]:
+        """Return a JSON-safe snapshot for control surfaces."""
+        with self._lock:
+            info = self._info
+            active = self._state in {
+                SessionState.RECORDING,
+                SessionState.FINALIZING,
+            }
+            subscriber_drops = (
+                max(
+                    0,
+                    self.subscription.stats().dropped_total
+                    - self._subscriber_drop_baseline,
+                )
+                if active
+                else 0
+            )
+            return {
+                "state": self._state.value,
+                "recording": self._state is SessionState.RECORDING,
+                "finalizing": self._state is SessionState.FINALIZING,
+                "session_id": info.session_id if info is not None else None,
+                "started_at": info.started_at if info is not None else None,
+                "piece": info.piece if info is not None else None,
+                "target_bpm": info.target_bpm if info is not None else None,
+                "event_count": self._event_count if active else 0,
+                "subscriber_dropped_events": subscriber_drops,
+                "sessions_dir": str(self.sessions_dir.resolve()),
+            }
+
     def start(self) -> None:
         if self._worker is not None and self._worker.is_alive():
             return
