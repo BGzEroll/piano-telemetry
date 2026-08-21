@@ -53,7 +53,7 @@ def available_ports() -> MidiPorts:
     )
 
 
-def test_portal_settings_and_visualization_are_served(tmp_path: Path) -> None:
+def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) -> None:
     app = create_web_app(
         settings_store=SettingsStore(tmp_path / "config.json"),
         virtual_status_provider=available_driver,
@@ -66,8 +66,20 @@ def test_portal_settings_and_visualization_are_served(tmp_path: Path) -> None:
             assert response.status_code == 200
             assert response.content
         settings_html = client.get("/settings").text
+        home_html = client.get("/").text
+        visualization_html = client.get("/visualization").text
+        assert "实时演奏" in home_html
+        assert "LIVE PERFORMANCE" not in home_html
+        assert home_html == visualization_html
         assert 'class="custom-select"' in settings_html
         assert '<select' not in settings_html
+        assert "DEVICE CONFIGURATION" not in settings_html
+        assert "配置实时链路" not in settings_html
+        assert 'class="step-number"' not in settings_html
+        assert "选择电钢输入" not in settings_html
+        assert "由程序创建" not in settings_html
+        assert 'class="settings-action-buttons"' in settings_html
+        assert 'id="route-status"' not in settings_html
 
 
 def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) -> None:
@@ -82,7 +94,7 @@ def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) 
         response = client.put(
             "/api/settings",
             json={
-                "input_port": "Test Input",
+                "input_port": "Digital Piano",
                 "output_port": "Piano Telemetry Out",
                 "receive_sysex": False,
                 "receive_clock": True,
@@ -92,7 +104,8 @@ def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) 
         )
         assert response.status_code == 200
         settings = client.get("/api/settings").json()
-        assert settings["input_port"] == "Test Input"
+        assert settings["input_port"] == "Digital Piano"
+        assert response.json()["midi_restarted"] is False
         assert settings["receive_clock"] is True
         ports = client.get("/api/midi/ports").json()
         assert ports["input_port"] == VIRTUAL_INPUT_PORT_NAME
@@ -184,3 +197,35 @@ def test_startup_keeps_an_available_saved_physical_input(tmp_path: Path) -> None
         assert status["running"] is True
         assert status["input_port"] == "Digital Piano"
         assert store.load().input_port == "Digital Piano"
+
+
+def test_saving_settings_restarts_a_running_midi_route(tmp_path: Path) -> None:
+    TrackingRouter.instances.clear()
+    store = SettingsStore(tmp_path / "config.json")
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=TrackingRouter,
+    )
+
+    with TestClient(app) as client:
+        original = TrackingRouter.instances[-1]
+        response = client.put(
+            "/api/settings",
+            json={
+                "input_port": "Digital Piano",
+                "receive_sysex": True,
+                "receive_clock": False,
+                "receive_active_sensing": False,
+                "panic_on_stop": True,
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["midi_restarted"] is True
+        assert original.stopped is True
+        assert len(TrackingRouter.instances) == 2
+        assert TrackingRouter.instances[-1].config.input_port == "Digital Piano"
+        assert TrackingRouter.instances[-1].config.receive_sysex is True
+        assert client.get("/api/status").json()["running"] is True

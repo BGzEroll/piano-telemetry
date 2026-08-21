@@ -13,7 +13,7 @@ Windows 电钢琴 MIDI 低延迟透传和尽力而为的遥测基础服务。
 - Session 状态机和 JSONL 录制。
 - 异常退出后的 `.part` Session 恢复。
 - Session 结束后的 Standard MIDI 导出。
-- 本地 Web 门户、设置页和可视化页面。
+- 默认可视化首页和设置页。
 - 实时 WebSocket、MIDI 瀑布流和钢琴键盘。
 - 输入端口选择、固定虚拟输出、驱动检测及 Web 启停 MIDI 路由。
 - 单文件 Windows EXE 打包。
@@ -26,9 +26,9 @@ Windows 电钢琴 MIDI 低延迟透传和尽力而为的遥测基础服务。
 & 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi python -m pip install -e '.[dev]'
 ```
 
-## Web 门户
+## Web 界面
 
-不带参数运行时会启动本地门户并打开浏览器：
+不带参数运行时会启动本地 Web 界面并直接打开可视化页面：
 
 ```powershell
 python -m piano_telemetry
@@ -40,10 +40,12 @@ python -m piano_telemetry
 python -m piano_telemetry serve --port 8765
 ```
 
-访问地址为 `http://127.0.0.1:8765/`。门户包含：
+访问地址为 `http://127.0.0.1:8765/`：
 
 - `可视化`：实时瀑布流、钢琴键盘、和弦、力度和 Sustain。
 - `设置`：输入端口选择、固定虚拟输出、驱动状态以及 MIDI 路由启动/停止。
+
+路由运行时点击“保存设置”，程序会关闭并重启 MIDI 路由，以应用输入端口和系统消息选项。
 
 程序启动后会读取已保存的输入端口并自动启动 MIDI。若该端口已断开或不存在，会将设置回退并写回为 `Piano Telemetry Input`，然后使用托管虚拟输入启动。
 
@@ -128,7 +130,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_exe.ps1
 dist\PianoTelemetry.exe
 ```
 
-EXE 内置全部 HTML、CSS、JavaScript、Python 运行时和 Conda 所需 DLL，可以复制到其他目录运行。第三方 `teVirtualMIDI.dll` 不包含在内，必须由用户自行安装。双击或不带参数启动时会打开 Web 门户。
+EXE 内置全部 HTML、CSS、JavaScript、Python 运行时和 Conda 所需 DLL，可以复制到其他目录运行。第三方 `teVirtualMIDI.dll` 不包含在内，必须由用户自行安装。双击或不带参数启动时会直接打开可视化页面。
 
 首次保存设置或录制时，EXE 会在自身所在目录创建 `data`。因此应将 EXE 放在当前用户有写入权限的位置，不建议直接放入 `Program Files`。
 

@@ -85,8 +85,8 @@ def create_web_app(
     app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
 
     @app.get("/", include_in_schema=False)
-    async def portal():
-        return FileResponse(web_root / "portal.html")
+    async def home():
+        return FileResponse(web_root / "visualization.html")
 
     @app.get("/visualization", include_in_schema=False)
     async def visualization():
@@ -102,9 +102,19 @@ def create_web_app(
 
     @app.put("/api/settings")
     async def put_settings(payload: SettingsPayload) -> dict[str, object]:
-        settings = AppSettings.from_dict(payload.model_dump())
-        await asyncio.to_thread(store.save, settings)
-        return settings.to_dict()
+        try:
+            settings, restarted = await asyncio.to_thread(
+                _save_and_apply_settings,
+                store,
+                controller,
+                AppSettings.from_dict(payload.model_dump()),
+                midi_ports_provider,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        result = settings.to_dict()
+        result["midi_restarted"] = restarted
+        return result
 
     @app.get("/api/midi/ports")
     async def midi_ports() -> dict[str, object]:
@@ -209,6 +219,21 @@ def _load_startable_settings(
         settings = replace(settings, input_port=selected)
         store.save(settings)
     return settings
+
+
+def _save_and_apply_settings(
+    store: SettingsStore,
+    controller: MidiController,
+    settings: AppSettings,
+    midi_ports_provider,
+) -> tuple[AppSettings, bool]:
+    was_running = bool(controller.status()["running"])
+    store.save(settings)
+    settings = _load_startable_settings(store, midi_ports_provider)
+    if was_running:
+        controller.stop()
+        controller.start(settings)
+    return settings, was_running
 
 
 def run_web_server(

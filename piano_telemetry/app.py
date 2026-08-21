@@ -22,7 +22,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="piano-telemetry")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    serve = subparsers.add_parser("serve", help="start the local Web portal")
+    serve = subparsers.add_parser("serve", help="start the local Web interface")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8765)
     serve.add_argument("--no-browser", action="store_true")

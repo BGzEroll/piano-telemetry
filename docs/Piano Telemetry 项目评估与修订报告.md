@@ -523,16 +523,17 @@ piano_telemetry/
 - Session 结束后的 Standard MIDI 导出。
 - `route --record` 自动 Session 录制模式。
 - FastAPI 本地 HTTP 服务和 WebSocket 实时广播。
-- “可视化”和“设置”双入口门户。
+- `/` 默认显示可视化页面，并通过顶部导航进入设置页。
 - Web 输入端口选择与持久化、固定输出展示、驱动安装提示及 MIDI 路由启停。
 - Web 服务启动时自动校验保存的输入端口：端口不存在则持久化回退到 `Piano Telemetry Input`，随后自动启动 MIDI。
+- MIDI 路由运行时保存设置会自动关闭并重建路由，使输入端口和系统消息选项立即生效。
 - MIDI 瀑布流、钢琴键盘、力度、Sustain、当前按键和基础和弦显示。
 - 每个 WebSocket 客户端独立有界队列和慢客户端丢弃策略。
 - 程序目录下 `data\config.json` 用户配置存储；EXE 模式对应 EXE 所在目录。
 - 程序目录下 `data\sessions` 默认 Session 存储。
 - PyInstaller 单文件 Windows EXE 及内置 Web 静态资源。
 - WebSocket 运行库作为正式依赖并随 EXE 打包，Uvicorn 使用 `websockets-sansio` 实现。
-- 门户、设置页和可视化页采用亮色极简主题，统一使用圆角卡片、轻边框、克制阴影和高辨识度状态色。
+- 设置页和可视化页采用亮色极简主题，统一使用圆角卡片、轻边框、克制阴影和高辨识度状态色。
 - 27 项事件解析、广播隔离、录制、状态分析、虚拟路由、路径和 Web API/WebSocket 测试。
 
 自动化测试结果：
@@ -563,7 +564,7 @@ dist\PianoTelemetry.exe
 验证时从不包含源码和 Web 资源的临时目录启动 EXE，结果如下：
 
 - FastAPI/Uvicorn 正常启动。
-- 门户 `/` 返回 HTTP 200。
+- 可视化首页 `/` 返回 HTTP 200。
 - 内置 `/static/app.css` 返回 HTTP 200。
 - 设置和状态 API 正常响应。
 - EXE 可独立枚举 Windows MIDI 端口。

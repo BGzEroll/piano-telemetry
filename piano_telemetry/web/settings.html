@@ -11,27 +11,19 @@
   <nav class="topbar">
     <a class="brand" href="/">Piano <span>Telemetry</span></a>
     <div class="nav-links">
-      <a href="/visualization">可视化</a>
+      <a href="/">可视化</a>
       <a class="active" href="/settings">设置</a>
     </div>
   </nav>
 
   <main class="page-shell settings-shell">
     <header class="page-heading">
-      <div>
-        <div class="eyebrow">DEVICE CONFIGURATION</div>
-        <h1>设置</h1>
-        <p>配置实时链路。保存设置不会自动重启正在运行的 MIDI 路由。</p>
-      </div>
-      <div id="route-status" class="route-status offline">未运行</div>
+      <h1>设置</h1>
     </header>
 
     <section class="settings-panel">
       <div class="panel-title">
-        <div>
-          <span class="step-number">01</span>
-          <h2>MIDI 路由</h2>
-        </div>
+        <h2>MIDI 路由</h2>
         <button id="refresh-ports" class="button ghost" type="button">刷新端口</button>
       </div>
 
@@ -45,13 +37,11 @@
             </button>
             <div id="input-port-options" class="select-options" role="listbox" aria-label="MIDI 输入端口" hidden></div>
           </div>
-          <small>选择电钢输入；使用测试脚本时选择 Piano Telemetry Input。</small>
         </div>
         <div class="route-arrow" aria-hidden="true">→</div>
         <div class="field">
           <span>输出端口</span>
           <div id="output-port" class="managed-port-name">Piano Telemetry Output</div>
-          <small>由程序创建，NanoHost 应监听此端口。</small>
         </div>
       </div>
       <div id="port-message" class="inline-message"></div>
@@ -60,10 +50,7 @@
 
     <section class="settings-panel">
       <div class="panel-title">
-        <div>
-          <span class="step-number">02</span>
-          <h2>系统消息</h2>
-        </div>
+        <h2>系统消息</h2>
       </div>
       <div class="toggle-list">
         <label class="toggle-row">
@@ -86,9 +73,11 @@
     </section>
 
     <div class="settings-actions">
-      <button id="save-settings" class="button primary" type="button">保存设置</button>
-      <button id="start-midi" class="button success" type="button">启动 MIDI</button>
-      <button id="stop-midi" class="button danger" type="button">停止 MIDI</button>
+      <div class="settings-action-buttons">
+        <button id="save-settings" class="button primary" type="button">保存设置</button>
+        <button id="start-midi" class="button success" type="button">启动 MIDI</button>
+        <button id="stop-midi" class="button danger" type="button">停止 MIDI</button>
+      </div>
       <span id="action-message" class="action-message"></span>
     </div>
   </main>

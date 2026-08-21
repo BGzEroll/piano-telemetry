@@ -10,7 +10,6 @@ const elements = {
   panic: document.querySelector('#panic-on-stop'),
   portMessage: document.querySelector('#port-message'),
   actionMessage: document.querySelector('#action-message'),
-  status: document.querySelector('#route-status'),
   start: document.querySelector('#start-midi'),
   stop: document.querySelector('#stop-midi'),
   installLink: document.querySelector('#driver-install-link'),
@@ -69,7 +68,7 @@ function showMessage(target, message, type = '') {
 }
 
 async function loadEverything() {
-  showMessage(elements.portMessage, '正在检测 teVirtualMIDI 驱动…');
+  showMessage(elements.portMessage, '正在检测 MIDI 驱动…');
   try {
     const [settingsResponse, portsResponse, statusResponse] = await Promise.all([
       fetch('/api/settings'), fetch('/api/midi/ports'), fetch('/api/status')
@@ -87,10 +86,13 @@ async function loadEverything() {
     elements.clock.checked = settings.receive_clock;
     elements.active.checked = settings.receive_active_sensing;
     elements.panic.checked = settings.panic_on_stop;
+    const driverMessage = driverAvailable
+      ? '驱动已就绪，端口将在启动 MIDI 时创建。'
+      : '驱动未就绪，无法创建虚拟 MIDI 端口。';
     const scanMessage = ports.port_scan_error
-      ? `；输入端口枚举失败：${ports.port_scan_error}`
-      : `；发现 ${Math.max(0, ports.inputs.length - 1)} 个外部输入端口`;
-    showMessage(elements.portMessage, `${ports.message}${scanMessage}`, driverAvailable ? 'success' : 'error');
+      ? `输入端口枚举失败：${ports.port_scan_error}`
+      : `发现 ${Math.max(0, ports.inputs.length - 1)} 个外部输入端口。`;
+    showMessage(elements.portMessage, `${driverMessage}${scanMessage}`, driverAvailable ? 'success' : 'error');
     updateStatus(status);
   } catch (error) {
     driverAvailable = false;
@@ -121,9 +123,6 @@ async function saveSettings() {
 }
 
 function updateStatus(status) {
-  elements.status.textContent = status.running ? '正在运行' : '未运行';
-  elements.status.classList.toggle('online', status.running);
-  elements.status.classList.toggle('offline', !status.running);
   elements.start.disabled = !driverAvailable || status.running;
   elements.stop.disabled = !status.running;
 }
@@ -159,8 +158,18 @@ document.addEventListener('click', (event) => {
   if (!elements.input.contains(event.target)) closeInputMenu();
 });
 document.querySelector('#save-settings').addEventListener('click', async () => {
-  try { await saveSettings(); showMessage(elements.actionMessage, '设置已保存', 'success'); }
-  catch (error) { showMessage(elements.actionMessage, error.message, 'error'); }
+  try {
+    const result = await saveSettings();
+    await loadEverything();
+    showMessage(
+      elements.actionMessage,
+      result.midi_restarted ? '设置已保存，MIDI 路由已重启' : '设置已保存',
+      'success'
+    );
+  } catch (error) {
+    await loadEverything();
+    showMessage(elements.actionMessage, error.message, 'error');
+  }
 });
 document.querySelector('#start-midi').addEventListener('click', async () => {
   try {

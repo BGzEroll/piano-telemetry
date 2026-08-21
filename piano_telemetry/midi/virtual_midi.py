@@ -54,24 +54,24 @@ def virtual_midi_status() -> VirtualMidiStatus:
     if sys.platform != "win32":
         return VirtualMidiStatus(
             available=False,
-            message="teVirtualMIDI 仅支持 Windows。",
+            message="驱动未就绪，teVirtualMIDI 仅支持 Windows。",
         )
     path = virtual_midi_dll_path()
     if not path.is_file():
         return VirtualMidiStatus(
             available=False,
-            message="未检测到 teVirtualMIDI 驱动，请先安装 loopMIDI 后重启程序。",
+            message="驱动未就绪，请先安装 loopMIDI 后重启程序。",
         )
     try:
         VirtualMidiDriver()
     except (OSError, AttributeError) as exc:
         return VirtualMidiStatus(
             available=False,
-            message=f"teVirtualMIDI 驱动无法加载：{exc}",
+            message=f"驱动未就绪，teVirtualMIDI 无法加载：{exc}",
         )
     return VirtualMidiStatus(
         available=True,
-        message="teVirtualMIDI 驱动已就绪，端口将在启动 MIDI 时创建。",
+        message="驱动已就绪，端口将在启动 MIDI 时创建。",
     )
 
 
