@@ -61,18 +61,29 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         auto_start_midi=False,
     )
     with TestClient(app) as client:
-        for path in ("/", "/settings", "/visualization", "/static/app.css"):
+        for path in (
+            "/",
+            "/settings",
+            "/visualization",
+            "/static/app.css",
+            "/static/visualization.js",
+        ):
             response = client.get(path)
             assert response.status_code == 200
             assert response.content
         settings_html = client.get("/settings").text
         home_html = client.get("/").text
         visualization_html = client.get("/visualization").text
+        visualization_js = client.get("/static/visualization.js").text
         assert "实时演奏" in home_html
         assert "LIVE PERFORMANCE" not in home_html
         assert "MIDI 路由" not in home_html
         assert 'id="route-label"' not in home_html
+        assert "MIDI WATERFALL" not in home_html
+        assert "C1 — C8" not in home_html
         assert home_html == visualization_html
+        assert "drawCurrentStaff(width, height)" in visualization_js
+        assert "Math.max(0, Math.min(yTop, yBottom))" not in visualization_js
         assert 'class="custom-select"' in settings_html
         assert '<select' not in settings_html
         assert "DEVICE CONFIGURATION" not in settings_html
