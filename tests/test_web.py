@@ -70,6 +70,8 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         visualization_html = client.get("/visualization").text
         assert "实时演奏" in home_html
         assert "LIVE PERFORMANCE" not in home_html
+        assert "MIDI 路由" not in home_html
+        assert 'id="route-label"' not in home_html
         assert home_html == visualization_html
         assert 'class="custom-select"' in settings_html
         assert '<select' not in settings_html

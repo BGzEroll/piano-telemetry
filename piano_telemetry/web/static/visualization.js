@@ -55,42 +55,56 @@ function resizeCanvas(canvas, context) {
   return {width, height};
 }
 
-function noteX(note, width) { return ((note - noteMin) / (noteMax - noteMin + 1)) * width; }
+function keyboardGeometry(width) {
+  const blackPitchClasses = new Set([1, 3, 6, 8, 10]);
+  const whiteNotes = [];
+  for (let note = noteMin; note <= noteMax; note++) {
+    if (!blackPitchClasses.has(note % 12)) whiteNotes.push(note);
+  }
+  const whiteWidth = width / whiteNotes.length;
+  const whiteIndexes = new Map(whiteNotes.map((note, index) => [note, index]));
+
+  return {
+    whiteNotes,
+    whiteWidth,
+    keyRect(note) {
+      if (!blackPitchClasses.has(note % 12)) {
+        return {x: whiteIndexes.get(note) * whiteWidth, width: whiteWidth, isBlack: false};
+      }
+      const previousWhiteCount = whiteNotes.findIndex(value => value > note);
+      const count = previousWhiteCount === -1 ? whiteNotes.length : previousWhiteCount;
+      return {x: count * whiteWidth - whiteWidth * .32, width: whiteWidth * .64, isBlack: true};
+    }
+  };
+}
 
 function drawWaterfall(now) {
   const {width, height} = resizeCanvas(waterfall, waterfallContext);
   waterfallContext.clearRect(0, 0, width, height);
-  waterfallContext.fillStyle = '#f9fcfb'; waterfallContext.fillRect(0, 0, width, height);
-  const noteWidth = width / (noteMax - noteMin + 1);
-  for (let note = noteMin; note <= noteMax; note++) {
-    const x = noteX(note, width);
-    waterfallContext.fillStyle = [1,3,6,8,10].includes(note % 12)
-      ? 'rgba(24,52,44,.018)' : 'rgba(24,52,44,.04)';
-    waterfallContext.fillRect(x, 0, Math.max(1, noteWidth - 1), height);
-  }
   waterfallContext.strokeStyle = 'rgba(44,168,137,.65)';
   waterfallContext.beginPath(); waterfallContext.moveTo(0, height - 2); waterfallContext.lineTo(width, height - 2); waterfallContext.stroke();
 
+  const geometry = keyboardGeometry(width);
   const visible = notes.filter(item => now - item.end < historyMs);
   notes.length = 0; notes.push(...visible);
-  for (const item of [...visible, ...active.values()]) drawNote(item, now, width, height, noteWidth);
+  for (const item of [...visible, ...active.values()]) drawNote(item, now, height, geometry);
   requestAnimationFrame(drawWaterfall);
 }
 
-function drawNote(item, now, width, height, noteWidth) {
+function drawNote(item, now, height, geometry) {
   if (item.note < noteMin || item.note > noteMax) return;
   const end = item.end || now;
   const yBottom = height - ((now - end) / historyMs) * height;
   const yTop = height - ((now - item.start) / historyMs) * height;
   const y = Math.max(0, Math.min(yTop, yBottom));
   const h = Math.max(4, Math.abs(yBottom - yTop));
-  const x = noteX(item.note, width);
-  const alpha = .55 + (item.velocity / 127) * .45;
+  const key = geometry.keyRect(item.note);
+  const alpha = .2 + Math.min(127, Math.max(0, item.velocity)) / 127 * .55;
   waterfallContext.fillStyle = `rgba(44,168,137,${alpha})`;
   waterfallContext.shadowColor = 'rgba(44,168,137,.45)'; waterfallContext.shadowBlur = item.end ? 0 : 12;
-  const barWidth = Math.max(2, noteWidth - 2);
+  const barWidth = Math.max(2, key.width - (key.isBlack ? 0 : 1));
   waterfallContext.beginPath();
-  waterfallContext.roundRect(x + 1, y, barWidth, h, Math.min(3, barWidth / 2, h / 2));
+  waterfallContext.roundRect(key.x, y, barWidth, h, Math.min(3, barWidth / 2, h / 2));
   waterfallContext.fill();
   waterfallContext.shadowBlur = 0;
 }
@@ -98,29 +112,19 @@ function drawNote(item, now, width, height, noteWidth) {
 function drawKeyboard() {
   const {width, height} = resizeCanvas(keyboard, keyboardContext);
   keyboardContext.clearRect(0, 0, width, height);
-  const whiteNotes = [];
-  for (let note = noteMin; note <= noteMax; note++) if (![1,3,6,8,10].includes(note % 12)) whiteNotes.push(note);
-  const whiteWidth = width / whiteNotes.length;
-  whiteNotes.forEach((note, index) => {
+  const geometry = keyboardGeometry(width);
+  geometry.whiteNotes.forEach(note => {
+    const key = geometry.keyRect(note);
     keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#55c9ae' : (state.sounding_notes?.includes(note) ? '#b9e9df' : '#ffffff');
-    keyboardContext.fillRect(index * whiteWidth, 0, whiteWidth - 1, height);
+    keyboardContext.fillRect(key.x, 0, key.width - 1, height);
   });
   for (let note = noteMin; note <= noteMax; note++) {
     if (![1,3,6,8,10].includes(note % 12)) continue;
-    const previousWhite = whiteNotes.filter(value => value < note).length;
-    const x = previousWhite * whiteWidth - whiteWidth * .32;
+    const key = geometry.keyRect(note);
     keyboardContext.fillStyle = state.physical_notes?.includes(note) ? '#39b99a' : (state.sounding_notes?.includes(note) ? '#78cfc3' : '#29463d');
-    keyboardContext.fillRect(x, 0, whiteWidth * .64, height * .62);
+    keyboardContext.fillRect(key.x, 0, key.width, height * .62);
   }
   requestAnimationFrame(drawKeyboard);
-}
-
-async function loadRouteStatus() {
-  try {
-    const response = await fetch('/api/status'); const status = await response.json();
-    document.querySelector('#route-label').textContent = status.running
-      ? `${status.input_port} → ${status.output_port}` : '未运行 · 请前往设置';
-  } catch (_) { document.querySelector('#route-label').textContent = '服务不可用'; }
 }
 
 function connectWebSocket() {
@@ -140,4 +144,4 @@ function connectWebSocket() {
 }
 
 window.addEventListener('resize', () => {});
-loadRouteStatus(); connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);
+connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);
