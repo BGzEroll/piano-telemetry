@@ -6,6 +6,7 @@ from PyInstaller.utils.hooks import collect_submodules
 
 project_root = Path(SPECPATH)
 web_assets = project_root / "piano_telemetry" / "web"
+app_icon = project_root / "assets" / "piano-emoji.ico"
 conda_bin = Path(sys.prefix) / "Library" / "bin"
 required_conda_dlls = (
     "ffi.dll",
@@ -45,6 +46,7 @@ exe = EXE(
     a.datas,
     [],
     name="PianoTelemetry",
+    icon=str(app_icon),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -84,10 +84,16 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         assert "C1 — C8" not in home_html
         assert 'id="record-toggle"' in home_html
         assert 'id="record-save-name"' in home_html
+        assert 'id="tonality-select"' in home_html
+        assert '>当前调式<' in home_html
+        assert '>当前和弦<' in home_html
+        assert home_html.index('>当前调式<') < home_html.index('>当前和弦<')
+        assert home_html.index('>当前和弦<') < home_html.index('>力度<')
         assert '>保存</button>' in home_html
         assert '>不保存</button>' in home_html
         assert home_html == visualization_html
         assert "drawCurrentStaff(width, height)" in visualization_js
+        assert "drawKeySignature" in visualization_js
         assert "Math.max(0, Math.min(yTop, yBottom))" not in visualization_js
         assert 'class="custom-select"' in settings_html
         assert '<select' not in settings_html
@@ -131,6 +137,41 @@ def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) 
         assert ports["inputs"] == [VIRTUAL_INPUT_PORT_NAME, "Digital Piano"]
         assert ports["available"] is True
     assert store.load().receive_clock is True
+
+
+def test_tonality_api_persists_and_updates_chord_spelling(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "config.json")
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
+    )
+    with TestClient(app) as client:
+        options = client.get("/api/tonality").json()
+        assert len(options["options"]) == 24
+        assert options["tonality"] == "C_major"
+
+        with client.websocket_connect("/ws") as websocket:
+            assert websocket.receive_json()["tonality"] == "C_major"
+            response = client.put("/api/tonality", json={"tonality": "Db_major"})
+            assert response.status_code == 200
+            assert response.json()["state"]["tonality"] == "Db_major"
+            assert websocket.receive_json()["tonality"] == "Db_major"
+            assert store.load().tonality == "Db_major"
+
+            latest = None
+            for seq, note in enumerate((61, 65, 68), start=1):
+                assert app.state.dispatcher.publish_nowait(
+                    MidiEvent.from_raw(
+                        seq=seq,
+                        captured_monotonic_ns=seq,
+                        source_port="test",
+                        raw=[0x90, note, 90],
+                    )
+                )
+                latest = websocket.receive_json()["state"]
+            assert latest["chord"] == "Db"
 
 
 def test_websocket_receives_independent_telemetry(tmp_path: Path) -> None:

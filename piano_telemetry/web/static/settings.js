@@ -16,6 +16,7 @@ const elements = {
 };
 let driverAvailable = false;
 let selectedInput = 'Piano Telemetry Input';
+let selectedTonality = 'C_major';
 
 function closeInputMenu({restoreFocus = false} = {}) {
   elements.inputOptions.hidden = true;
@@ -86,6 +87,7 @@ async function loadEverything() {
     elements.clock.checked = settings.receive_clock;
     elements.active.checked = settings.receive_active_sensing;
     elements.panic.checked = settings.panic_on_stop;
+    selectedTonality = settings.tonality || 'C_major';
     const driverMessage = driverAvailable
       ? '驱动已就绪，端口将在启动 MIDI 时创建。'
       : '驱动未就绪，无法创建虚拟 MIDI 端口。';
@@ -105,6 +107,7 @@ async function loadEverything() {
 function currentSettings() {
   return {
     input_port: selectedInput,
+    tonality: selectedTonality,
     receive_sysex: elements.sysex.checked,
     receive_clock: elements.clock.checked,
     receive_active_sensing: elements.active.checked,

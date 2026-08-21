@@ -51,3 +51,11 @@ def test_frozen_app_stores_generated_data_beside_exe(
     assert config_module.default_data_dir() == tmp_path / "data"
     assert config_module.default_sessions_dir() == tmp_path / "data" / "sessions"
     assert SettingsStore().path == tmp_path / "data" / "config.json"
+
+
+def test_tonality_is_validated_and_persisted(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "config.json")
+    store.save(AppSettings(tonality="Eb_minor"))
+    assert store.load().tonality == "Eb_minor"
+
+    assert AppSettings.from_dict({"tonality": "not-a-key"}).tonality == "C_major"

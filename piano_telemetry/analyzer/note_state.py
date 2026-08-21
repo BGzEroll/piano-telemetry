@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from piano_telemetry.midi.event import MidiEvent
+from piano_telemetry.analyzer.tonality import (
+    DEFAULT_TONALITY,
+    normalize_tonality,
+    pitch_class_name,
+)
 
 
-_NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 _CHORDS: tuple[tuple[str, frozenset[int]], ...] = (
     ("maj7", frozenset((0, 4, 7, 11))),
     ("m7", frozenset((0, 3, 7, 10))),
@@ -18,13 +22,17 @@ _CHORDS: tuple[tuple[str, frozenset[int]], ...] = (
 
 
 class NoteStateTracker:
-    def __init__(self) -> None:
+    def __init__(self, *, tonality: str = DEFAULT_TONALITY) -> None:
         self._physical: set[tuple[int, int]] = set()
         self._sounding: set[tuple[int, int]] = set()
         self._sustain: dict[int, int] = {}
         self._last_velocity = 0
         self._last_seq: int | None = None
         self._valid = True
+        self._tonality = normalize_tonality(tonality)
+
+    def set_tonality(self, tonality: str) -> None:
+        self._tonality = normalize_tonality(tonality)
 
     def reset(self, *, valid: bool = False) -> None:
         self._physical.clear()
@@ -63,7 +71,6 @@ class NoteStateTracker:
     def snapshot(self) -> dict[str, object]:
         physical_notes = sorted({note for _, note in self._physical})
         sounding_notes = sorted({note for _, note in self._sounding})
-        chord_notes = physical_notes or sounding_notes
         return {
             "kind": "state",
             "seq": self._last_seq,
@@ -72,7 +79,8 @@ class NoteStateTracker:
             "sounding_notes": sounding_notes,
             "sustain": max(self._sustain.values(), default=0),
             "last_velocity": self._last_velocity,
-            "chord": _identify_chord(chord_notes),
+            "tonality": self._tonality,
+            "chord": _identify_chord(physical_notes, self._tonality),
         }
 
     def _apply_control_change(self, channel: int, control: int, value: int) -> None:
@@ -98,7 +106,7 @@ class NoteStateTracker:
         self._sounding = {key for key in self._sounding if key[0] != channel}
 
 
-def _identify_chord(notes: list[int]) -> str | None:
+def _identify_chord(notes: list[int], tonality: str = DEFAULT_TONALITY) -> str | None:
     if len({note % 12 for note in notes}) < 3:
         return None
     pitch_classes = frozenset(note % 12 for note in notes)
@@ -108,7 +116,7 @@ def _identify_chord(notes: list[int]) -> str | None:
         for suffix, template in _CHORDS:
             if relative != template:
                 continue
-            root_name = _NOTE_NAMES[root]
+            root_name = pitch_class_name(root, tonality)
             if suffix == "major":
                 name = root_name
             elif suffix == "minor":
@@ -116,7 +124,6 @@ def _identify_chord(notes: list[int]) -> str | None:
             else:
                 name = f"{root_name}{suffix}"
             if bass != root:
-                name = f"{name}/{_NOTE_NAMES[bass]}"
+                name = f"{name}/{pitch_class_name(bass, tonality)}"
             return name
     return None
-

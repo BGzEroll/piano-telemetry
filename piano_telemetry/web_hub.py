@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import asyncio
 from queue import Empty
-from threading import Event, Thread
+from threading import Event, RLock, Thread
 
 from piano_telemetry.analyzer import NoteStateTracker
+from piano_telemetry.analyzer.tonality import DEFAULT_TONALITY, normalize_tonality
 from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.core.subscriber import OverflowPolicy, Subscription
 from piano_telemetry.midi.event import MidiEvent
@@ -19,6 +20,7 @@ class WebEventHub:
         *,
         subscriber_capacity: int = 4096,
         client_capacity: int = 256,
+        tonality: str = DEFAULT_TONALITY,
     ) -> None:
         self.dispatcher = dispatcher
         self.client_capacity = client_capacity
@@ -27,8 +29,9 @@ class WebEventHub:
             capacity=subscriber_capacity,
             overflow=OverflowPolicy.DROP_OLDEST,
         )
-        self._tracker = NoteStateTracker()
+        self._tracker = NoteStateTracker(tonality=tonality)
         self._latest_state = self._tracker.snapshot()
+        self._state_lock = RLock()
         self._clients: set[asyncio.Queue[dict[str, object]]] = set()
         self._loop: asyncio.AbstractEventLoop | None = None
         self._stop = Event()
@@ -62,7 +65,19 @@ class WebEventHub:
         self._clients.discard(queue)
 
     def latest_state(self) -> dict[str, object]:
-        return dict(self._latest_state)
+        with self._state_lock:
+            return dict(self._latest_state)
+
+    def set_tonality(self, tonality: str) -> dict[str, object]:
+        selected = normalize_tonality(tonality)
+        with self._state_lock:
+            self._tracker.set_tonality(selected)
+            state = self._tracker.snapshot()
+            self._latest_state = state
+        loop = self._loop
+        if loop is not None and not loop.is_closed():
+            loop.call_soon_threadsafe(self._fan_out, state)
+        return dict(state)
 
     @property
     def client_count(self) -> int:
@@ -75,8 +90,9 @@ class WebEventHub:
             except Empty:
                 continue
             try:
-                state, gap = self._tracker.apply(event)
-                self._latest_state = state
+                with self._state_lock:
+                    state, gap = self._tracker.apply(event)
+                    self._latest_state = state
                 payload: dict[str, object] = {
                     "kind": "telemetry",
                     "event": event.to_dict(),

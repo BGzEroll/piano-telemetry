@@ -16,19 +16,135 @@ const recordSaveName = document.querySelector('#record-save-name');
 const recordDialogError = document.querySelector('#record-dialog-error');
 const recordSaveButton = document.querySelector('#record-save');
 const recordDiscardButton = document.querySelector('#record-discard');
-const pitchNotation = [
-  {letter: 0, accidental: ''}, {letter: 0, accidental: '♯'},
-  {letter: 1, accidental: ''}, {letter: 1, accidental: '♯'},
-  {letter: 2, accidental: ''}, {letter: 3, accidental: ''},
-  {letter: 3, accidental: '♯'}, {letter: 4, accidental: ''},
-  {letter: 4, accidental: '♯'}, {letter: 5, accidental: ''},
-  {letter: 5, accidental: '♯'}, {letter: 6, accidental: ''}
+const tonalitySelect = document.querySelector('#tonality-select');
+const tonalityTrigger = document.querySelector('#tonality-trigger');
+const tonalityValue = document.querySelector('#tonality-value');
+const tonalityOptions = document.querySelector('#tonality-options');
+const naturalPitchClasses = [0, 2, 4, 5, 7, 9, 11];
+const sharpNotation = [
+  {letter: 0, accidental: 0}, {letter: 0, accidental: 1},
+  {letter: 1, accidental: 0}, {letter: 1, accidental: 1},
+  {letter: 2, accidental: 0}, {letter: 3, accidental: 0},
+  {letter: 3, accidental: 1}, {letter: 4, accidental: 0},
+  {letter: 4, accidental: 1}, {letter: 5, accidental: 0},
+  {letter: 5, accidental: 1}, {letter: 6, accidental: 0}
 ];
-let state = {physical_notes: [], sounding_notes: [], sustain: 0, last_velocity: 0, chord: null};
+const flatNotation = [
+  {letter: 0, accidental: 0}, {letter: 1, accidental: -1},
+  {letter: 1, accidental: 0}, {letter: 2, accidental: -1},
+  {letter: 2, accidental: 0}, {letter: 3, accidental: 0},
+  {letter: 4, accidental: -1}, {letter: 4, accidental: 0},
+  {letter: 5, accidental: -1}, {letter: 5, accidental: 0},
+  {letter: 6, accidental: -1}, {letter: 6, accidental: 0}
+];
+let tonalities = [{
+  value: 'C_major', label: 'C 大调', tonic_pitch_class: 0,
+  tonic_letter: 0, mode: 'major', fifths: 0
+}];
+let selectedTonality = tonalities[0];
+let keySpelling = new Map();
+let keyAccidentals = new Map();
+let state = {
+  physical_notes: [], sounding_notes: [], sustain: 0, last_velocity: 0,
+  chord: null, tonality: 'C_major'
+};
 let recordingState = {recording: false, finalizing: false, started_at: null};
 let recordingDialogOpen = false;
 
 function noteKey(channel, note) { return `${channel ?? 0}:${note}`; }
+
+function rebuildKeySpelling() {
+  const intervals = selectedTonality.mode === 'minor'
+    ? [0, 2, 3, 5, 7, 8, 10]
+    : [0, 2, 4, 5, 7, 9, 11];
+  keySpelling = new Map();
+  keyAccidentals = new Map();
+  intervals.forEach((interval, degree) => {
+    const pitchClass = (selectedTonality.tonic_pitch_class + interval) % 12;
+    const letter = (selectedTonality.tonic_letter + degree) % 7;
+    let accidental = (pitchClass - naturalPitchClasses[letter] + 12) % 12;
+    if (accidental > 6) accidental -= 12;
+    const spelling = {letter, accidental};
+    keySpelling.set(pitchClass, spelling);
+    keyAccidentals.set(letter, accidental);
+  });
+}
+
+function setTonality(value) {
+  selectedTonality = tonalities.find(item => item.value === value) || tonalities[0];
+  state.tonality = selectedTonality.value;
+  tonalityValue.textContent = selectedTonality.label;
+  for (const option of tonalityOptions.children) {
+    option.setAttribute('aria-selected', String(option.dataset.value === selectedTonality.value));
+  }
+  rebuildKeySpelling();
+}
+
+function closeTonalityMenu({restoreFocus = false} = {}) {
+  tonalityOptions.hidden = true;
+  tonalityTrigger.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) tonalityTrigger.focus();
+}
+
+function openTonalityMenu() {
+  tonalityOptions.hidden = false;
+  tonalityTrigger.setAttribute('aria-expanded', 'true');
+  const selected = tonalityOptions.querySelector('[aria-selected="true"]');
+  (selected || tonalityOptions.firstElementChild)?.focus();
+}
+
+async function saveTonality(value) {
+  const previous = selectedTonality.value;
+  setTonality(value);
+  closeTonalityMenu({restoreFocus: true});
+  try {
+    const response = await fetch('/api/tonality', {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({tonality: value}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || '无法保存调式');
+    if (result.state) state = result.state;
+    setTonality(result.tonality);
+    updateMetrics();
+  } catch (error) {
+    setTonality(previous);
+    document.querySelector('#data-warning').textContent = error.message;
+  }
+}
+
+function populateTonalities(options, current) {
+  tonalities = Array.isArray(options) && options.length ? options : tonalities;
+  tonalityOptions.replaceChildren();
+  tonalities.forEach((item, index) => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'select-option';
+    if (index > 0 && item.mode !== tonalities[index - 1].mode) {
+      option.classList.add('mode-start');
+    }
+    option.setAttribute('role', 'option');
+    option.dataset.value = item.value;
+    option.textContent = item.label;
+    option.addEventListener('click', () => saveTonality(item.value));
+    tonalityOptions.append(option);
+  });
+  setTonality(current);
+  closeTonalityMenu();
+}
+
+async function loadTonality() {
+  try {
+    const response = await fetch('/api/tonality');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || '无法读取调式');
+    populateTonalities(result.options, result.tonality);
+  } catch (error) {
+    populateTonalities(tonalities, selectedTonality.value);
+    document.querySelector('#data-warning').textContent = error.message;
+  }
+}
 
 function applyTelemetry(payload) {
   const event = payload.event;
@@ -48,7 +164,9 @@ function applyTelemetry(payload) {
 }
 
 function updateMetrics(gap) {
-  document.querySelector('#chord').textContent = state.chord || '—';
+  if (state.tonality && state.tonality !== selectedTonality.value) setTonality(state.tonality);
+  document.querySelector('#chord').textContent = (state.chord || '—')
+    .replaceAll('#', '♯').replaceAll('b', '♭');
   document.querySelector('#velocity').textContent = state.last_velocity || 0;
   document.querySelector('#sustain').textContent = state.sustain || 0;
   document.querySelector('#sequence').textContent = state.seq ?? '—';
@@ -59,8 +177,9 @@ function updateMetrics(gap) {
 }
 
 function noteName(note) {
-  const names = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-  return `${names[note % 12]}${Math.floor(note / 12) - 1}`;
+  const pitch = pitchSpelling(note);
+  const accidental = pitch.accidental > 0 ? '♯' : pitch.accidental < 0 ? '♭' : '';
+  return `${['C','D','E','F','G','A','B'][pitch.letter]}${accidental}${pitch.octave}`;
 }
 
 function recordingDuration() {
@@ -233,10 +352,30 @@ function drawNote(item, now, height, geometry) {
   waterfallContext.shadowBlur = 0;
 }
 
+function pitchSpelling(note) {
+  const pitchClass = note % 12;
+  const notation = keySpelling.get(pitchClass)
+    || (selectedTonality.fifths < 0 ? flatNotation[pitchClass] : sharpNotation[pitchClass]);
+  let octave = Math.floor(note / 12) - 1;
+  let writtenMidi = (octave + 1) * 12
+    + naturalPitchClasses[notation.letter] + notation.accidental;
+  while (writtenMidi > note) { writtenMidi -= 12; octave -= 1; }
+  while (writtenMidi < note) { writtenMidi += 12; octave += 1; }
+  return {letter: notation.letter, accidental: notation.accidental, octave};
+}
+
 function staffPitch(note) {
-  const notation = pitchNotation[note % 12];
-  const octave = Math.floor(note / 12) - 1;
-  return {diatonic: octave * 7 + notation.letter, accidental: notation.accidental};
+  const spelling = pitchSpelling(note);
+  const signatureAccidental = keyAccidentals.get(spelling.letter) || 0;
+  let accidental = '';
+  if (spelling.accidental !== signatureAccidental) {
+    accidental = spelling.accidental > 0 ? '♯'
+      : spelling.accidental < 0 ? '♭' : '♮';
+  }
+  return {
+    diatonic: spelling.octave * 7 + spelling.letter,
+    accidental,
+  };
 }
 
 function drawStaffLines(startX, endX, bottomY, lineGap) {
@@ -247,6 +386,28 @@ function drawStaffLines(startX, endX, bottomY, lineGap) {
     waterfallContext.lineTo(endX, y);
   }
   waterfallContext.stroke();
+}
+
+function drawKeySignature(startX, bottomY, lineGap, clef) {
+  const fifths = selectedTonality.fifths || 0;
+  if (!fifths) return startX;
+  const sharpSteps = clef === 'treble' ? [8, 5, 9, 6, 3, 7, 4] : [6, 3, 7, 4, 1, 5, 2];
+  const flatSteps = clef === 'treble' ? [4, 7, 3, 6, 2, 5, 1] : [2, 5, 1, 4, 0, 3, -1];
+  const steps = fifths > 0 ? sharpSteps : flatSteps;
+  const symbol = fifths > 0 ? '♯' : '♭';
+  const count = Math.abs(fifths);
+  waterfallContext.save();
+  waterfallContext.fillStyle = 'rgba(16,22,20,.9)';
+  waterfallContext.font = '18px "Segoe UI Symbol", "Noto Music", serif';
+  waterfallContext.textAlign = 'center';
+  waterfallContext.textBaseline = 'middle';
+  for (let index = 0; index < count; index++) {
+    const x = startX + index * 9;
+    const y = bottomY - steps[index] * lineGap / 2;
+    waterfallContext.fillText(symbol, x, y);
+  }
+  waterfallContext.restore();
+  return startX + count * 9;
 }
 
 function drawLedgerLines(noteX, staffStep, bottomY, lineGap) {
@@ -305,7 +466,7 @@ function drawCurrentStaff(width, height) {
   const horizontalMargin = width < 640 ? 18 : 46;
   const panelWidth = Math.min(260, width - horizontalMargin * 2);
   const panelHeight = Math.min(190, height - 24);
-  if (panelWidth < 240 || panelHeight < 170) return;
+  if (panelWidth < 230 || panelHeight < 170) return;
 
   const left = (width - panelWidth) / 2;
   const top = (height - panelHeight) / 2;
@@ -315,7 +476,10 @@ function drawCurrentStaff(width, height) {
   const bassBottom = top + 146;
   const staffStart = left + 52;
   const staffEnd = right - 14;
-  const noteX = staffStart + (staffEnd - staffStart) * .58;
+  const clefX = staffStart - 24;
+  const signatureStart = staffStart + 8;
+  const signatureEnd = signatureStart + Math.abs(selectedTonality.fifths || 0) * 9;
+  const noteX = Math.max(signatureEnd + 18, staffEnd - 42);
 
   waterfallContext.save();
   waterfallContext.strokeStyle = 'rgba(16,22,20,.72)';
@@ -331,9 +495,11 @@ function drawCurrentStaff(width, height) {
   waterfallContext.textAlign = 'center';
   waterfallContext.textBaseline = 'middle';
   waterfallContext.font = '48px "Segoe UI Symbol", "Noto Music", serif';
-  waterfallContext.fillText('𝄞', staffStart - 24, trebleBottom - lineGap * 2 + 1);
+  waterfallContext.fillText('𝄞', clefX, trebleBottom - lineGap * 2 + 1);
   waterfallContext.font = '38px "Segoe UI Symbol", "Noto Music", serif';
-  waterfallContext.fillText('𝄢', staffStart - 24, bassBottom - lineGap * 2);
+  waterfallContext.fillText('𝄢', clefX, bassBottom - lineGap * 2);
+  drawKeySignature(signatureStart, trebleBottom, lineGap, 'treble');
+  drawKeySignature(signatureStart, bassBottom, lineGap, 'bass');
 
   const soundingNotes = [...new Set(state.sounding_notes || [])]
     .filter(note => Number.isInteger(note) && note >= noteMin && note <= noteMax)
@@ -378,7 +544,11 @@ function connectWebSocket() {
   socket.onmessage = message => {
     const payload = JSON.parse(message.data);
     if (payload.kind === 'telemetry') applyTelemetry(payload);
-    else if (payload.kind === 'state') { state = payload; updateMetrics(); }
+    else if (payload.kind === 'state') {
+      state = payload;
+      if (payload.tonality) setTonality(payload.tonality);
+      updateMetrics();
+    }
   };
   socket.onclose = () => {
     dot.classList.remove('online'); label.textContent = '正在重连';
@@ -387,6 +557,35 @@ function connectWebSocket() {
 }
 
 window.addEventListener('resize', () => {});
+tonalityTrigger.addEventListener('click', () => {
+  if (tonalityOptions.hidden) openTonalityMenu();
+  else closeTonalityMenu();
+});
+tonalityTrigger.addEventListener('keydown', event => {
+  if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+    event.preventDefault();
+    openTonalityMenu();
+  }
+});
+tonalityOptions.addEventListener('keydown', event => {
+  const options = [...tonalityOptions.children];
+  const current = options.indexOf(document.activeElement);
+  if (event.key === 'Escape') {
+    event.preventDefault(); closeTonalityMenu({restoreFocus: true}); return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault(); document.activeElement?.click(); return;
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+    : event.key === 'ArrowDown' ? Math.min(options.length - 1, current + 1)
+    : Math.max(0, current - 1);
+  options[next]?.focus();
+});
+document.addEventListener('click', event => {
+  if (!tonalitySelect.contains(event.target)) closeTonalityMenu();
+});
 recordButton.addEventListener('click', toggleRecording);
 recordDialog.addEventListener('submit', event => {
   event.preventDefault();
@@ -403,4 +602,5 @@ setInterval(() => {
   if (recordingState.recording) renderRecordingState(recordingState);
 }, 1000);
 setInterval(loadRecordingState, 5000);
-loadRecordingState(); connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);
+rebuildKeySpelling();
+loadTonality(); loadRecordingState(); connectWebSocket(); requestAnimationFrame(drawWaterfall); requestAnimationFrame(drawKeyboard);

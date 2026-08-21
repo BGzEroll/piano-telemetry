@@ -13,6 +13,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from piano_telemetry.analyzer.tonality import (
+    DEFAULT_TONALITY,
+    normalize_tonality,
+    tonalities_payload,
+)
 from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.controller import MidiController
 from piano_telemetry.core.dispatcher import EventDispatcher
@@ -34,6 +39,7 @@ from piano_telemetry.web_hub import WebEventHub
 
 class SettingsPayload(BaseModel):
     input_port: str = VIRTUAL_INPUT_PORT_NAME
+    tonality: str = DEFAULT_TONALITY
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -43,6 +49,10 @@ class SettingsPayload(BaseModel):
 class RecordingStartPayload(BaseModel):
     piece: str | None = Field(default=None, max_length=200)
     target_bpm: float | None = Field(default=None, gt=0, le=400)
+
+
+class TonalityPayload(BaseModel):
+    tonality: str = DEFAULT_TONALITY
 
 
 class RecordingStopPayload(BaseModel):
@@ -67,7 +77,7 @@ def create_web_app(
         router_factory=router_factory,
         status_provider=virtual_status_provider,
     )
-    hub = WebEventHub(event_dispatcher)
+    hub = WebEventHub(event_dispatcher, tonality=store.load().tonality)
     session_recorder = recorder or SessionRecorder(
         event_dispatcher,
         sessions_dir=store.path.parent / "sessions",
@@ -141,8 +151,28 @@ def create_web_app(
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         result = settings.to_dict()
+        hub.set_tonality(settings.tonality)
         result["midi_restarted"] = restarted
         return result
+
+    @app.get("/api/tonality")
+    async def get_tonality() -> dict[str, object]:
+        return {
+            "tonality": store.load().tonality,
+            "options": tonalities_payload(),
+        }
+
+    @app.put("/api/tonality")
+    async def put_tonality(payload: TonalityPayload) -> dict[str, object]:
+        selected = normalize_tonality(payload.tonality)
+        if selected != payload.tonality:
+            raise HTTPException(status_code=422, detail="不支持的调式")
+        settings = replace(store.load(), tonality=selected)
+        await asyncio.to_thread(store.save, settings)
+        return {
+            "tonality": selected,
+            "state": hub.set_tonality(selected),
+        }
 
     @app.get("/api/midi/ports")
     async def midi_ports() -> dict[str, object]:

@@ -101,11 +101,18 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .record-toggle.recording { color: #a53d3d; border-color: rgba(221,100,100,.38); background: rgba(221,100,100,.09); }
 .record-toggle.recording i { border-radius: 2px; }
 .record-toggle:disabled { opacity: .48; cursor: wait; box-shadow: none; }
-.metric-strip { display: grid; grid-template-columns: repeat(4, 1fr); overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); margin: 18px 0 14px; }
-.metric { padding: 16px 19px; border-right: 1px solid var(--line); display: grid; gap: 7px; }
-.metric:last-child { border: 0; }
+.metric-strip { display: grid; grid-template-columns: repeat(5, 1fr); overflow: visible; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); margin: 18px 0 14px; }
+.metric { position: relative; min-width: 0; padding: 16px 19px; border-right: 1px solid var(--line); display: grid; gap: 7px; }
+.metric:last-child { border-right: 0; }
 .metric span { color: var(--muted); font-size: 10px; letter-spacing: .1em; }
 .metric strong { font-size: 21px; font-weight: 650; letter-spacing: -.025em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.metric-select .select-trigger { min-height: 27px; width: max-content; max-width: 100%; border: 0; border-radius: 8px; padding: 0 26px 0 0; background: transparent; box-shadow: none; font-size: 20px; font-weight: 650; letter-spacing: -.025em; }
+.metric-select .select-trigger:hover, .metric-select .select-trigger[aria-expanded="true"] { border: 0; background: transparent; box-shadow: none; }
+.metric-select .select-trigger > span { color: var(--text); font-size: inherit; letter-spacing: inherit; }
+.metric-select .select-chevron { position: absolute; right: 5px; top: 50%; margin-top: -6px; }
+.metric-select .select-trigger[aria-expanded="true"] .select-chevron { margin-top: -1px; }
+.metric-select .select-options { left: -8px; right: auto; width: 190px; max-height: 330px; }
+.metric-select .select-option.mode-start { margin-top: 4px; box-shadow: inset 0 1px var(--line); padding-top: 13px; }
 .waterfall-panel { border: 1px solid var(--line); border-radius: var(--radius-lg); background: #f9fcfb; box-shadow: var(--shadow-md); position: relative; overflow: hidden; }
 #waterfall { display: block; width: 100%; height: min(55vh, 520px); }
 #keyboard { display: block; width: 100%; height: 112px; border-top: 1px solid rgba(44,168,137,.35); }
@@ -136,7 +143,7 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
   .metric-strip { grid-template-columns: repeat(2, 1fr); }
   .metric:nth-child(2n) { border-right: 0; }
   .metric { border-bottom: 1px solid var(--line); }
-  .metric:nth-last-child(-n + 2) { border-bottom: 0; }
+  .metric:last-child { grid-column: 1 / -1; border-bottom: 0; }
   .visual-footer { flex-wrap: wrap; gap: 8px 14px; }
   .record-message { margin-left: 0; margin-right: 0; }
   .record-dialog { padding: 20px; }

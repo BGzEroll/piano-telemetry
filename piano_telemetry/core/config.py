@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, fields
 from pathlib import Path
 from threading import RLock
 
+from piano_telemetry.analyzer.tonality import DEFAULT_TONALITY, normalize_tonality
 from piano_telemetry.midi.virtual_midi import VIRTUAL_INPUT_PORT_NAME
 
 
@@ -28,6 +29,7 @@ def default_sessions_dir() -> Path:
 @dataclass(frozen=True, slots=True)
 class AppSettings:
     input_port: str = VIRTUAL_INPUT_PORT_NAME
+    tonality: str = DEFAULT_TONALITY
     receive_sysex: bool = False
     receive_clock: bool = False
     receive_active_sensing: bool = False
@@ -44,6 +46,8 @@ class AppSettings:
                 if isinstance(input_port, str) and input_port.strip()
                 else VIRTUAL_INPUT_PORT_NAME
             )
+        if "tonality" in values:
+            values["tonality"] = normalize_tonality(values["tonality"])
         for key in (
             "receive_sysex",
             "receive_clock",

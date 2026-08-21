@@ -29,6 +29,16 @@
     </header>
 
     <section class="metric-strip">
+      <div class="metric tonality-metric">
+        <span>当前调式</span>
+        <div id="tonality-select" class="custom-select metric-select">
+          <button id="tonality-trigger" class="select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="tonality-options">
+            <span id="tonality-value">C 大调</span>
+            <i class="select-chevron" aria-hidden="true"></i>
+          </button>
+          <div id="tonality-options" class="select-options" role="listbox" aria-label="当前调式" hidden></div>
+        </div>
+      </div>
       <div class="metric"><span>当前和弦</span><strong id="chord">—</strong></div>
       <div class="metric"><span>力度</span><strong id="velocity">0</strong></div>
       <div class="metric"><span>延音踏板</span><strong id="sustain">0</strong></div>
