@@ -4,6 +4,7 @@ from time import perf_counter_ns
 from fastapi.testclient import TestClient
 
 from piano_telemetry.core.config import AppSettings, SettingsStore
+from piano_telemetry.core.key_mapping import KeyboardMappingStore
 from piano_telemetry.midi.event import MidiEvent
 from piano_telemetry.midi.ports import MidiPorts
 from piano_telemetry.midi.virtual_midi import (
@@ -65,9 +66,11 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         for path in (
             "/",
             "/settings",
+            "/mapping",
             "/visualization",
             "/static/app.css",
             "/static/visualization.js",
+            "/static/mapping.js",
         ):
             response = client.get(path)
             assert response.status_code == 200
@@ -104,6 +107,40 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         assert "由程序创建" not in settings_html
         assert 'class="settings-action-buttons"' in settings_html
         assert 'id="route-status"' not in settings_html
+
+
+def test_key_mapping_page_and_api_persist_bindings(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "config.json")
+    mapping_store = KeyboardMappingStore(tmp_path / "key_mapping.json")
+    app = create_web_app(
+        settings_store=store,
+        keyboard_mapping_store=mapping_store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
+    )
+    with TestClient(app) as client:
+        page = client.get("/mapping")
+        assert page.status_code == 200
+        assert "按键映射" in page.text
+        assert 'id="mapping-enabled"' in page.text
+
+        response = client.put(
+            "/api/key-mapping",
+            json={"enabled": True, "bindings": {"60": "KeyA", "64": "Digit1"}},
+        )
+        assert response.status_code == 200
+        assert response.json()["enabled"] is True
+        assert response.json()["bindings"] == {"60": "KeyA", "64": "Digit1"}
+        assert client.get("/api/key-mapping").json()["bindings"]["60"] == "KeyA"
+
+        invalid = client.put(
+            "/api/key-mapping",
+            json={"enabled": True, "bindings": {"60": "Numpad1"}},
+        )
+        assert invalid.status_code == 422
+
+    assert mapping_store.load().bindings == ((60, "KeyA"), (64, "Digit1"))
 
 
 def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) -> None:

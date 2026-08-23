@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from itertools import count
 from time import perf_counter_ns
+from collections.abc import Callable
 from typing import Any
 
 from piano_telemetry.core.dispatcher import EventDispatcher
@@ -47,6 +48,13 @@ class MidiRouter:
         self._midi_out: Any | None = None
         self._sequence = count(1)
         self._virtual_driver_factory = virtual_driver_factory
+        self._post_forward_callback: Callable[[list[int]], object] | None = None
+
+    def set_post_forward_callback(
+        self,
+        callback: Callable[[list[int]], object] | None,
+    ) -> None:
+        self._post_forward_callback = callback
 
     def start(self) -> None:
         if self._midi_in is not None or self._midi_out is not None:
@@ -220,6 +228,14 @@ class MidiRouter:
         except Exception:
             self.metrics.forward_errors_total += 1
             return
+
+        callback = self._post_forward_callback
+        if callback is not None:
+            try:
+                callback(message)
+            except Exception:
+                # Optional realtime observers must never affect MIDI forwarding.
+                pass
 
         try:
             telemetry_event = MidiEvent.from_raw(

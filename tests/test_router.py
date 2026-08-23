@@ -40,6 +40,22 @@ def test_router_sends_before_publishing() -> None:
     assert router.metrics.events_forwarded_total == 1
 
 
+def test_keyboard_mapping_callback_runs_only_after_midi_output() -> None:
+    calls: list[tuple[str, object]] = []
+    router = MidiRouter(
+        MidiRouterConfig(input_port="in", output_port="out"),
+        RecordingDispatcher(calls),  # type: ignore[arg-type]
+    )
+    router._midi_out = RecordingOutput(calls)
+    router.set_post_forward_callback(
+        lambda message: calls.append(("mapping", tuple(message)))
+    )
+
+    router._handle_message([0x90, 60, 100], captured_monotonic_ns=10)
+
+    assert [call[0] for call in calls] == ["send", "mapping", "publish"]
+
+
 def test_observer_failure_does_not_escape_after_successful_send() -> None:
     calls: list[tuple[str, object]] = []
     router = MidiRouter(

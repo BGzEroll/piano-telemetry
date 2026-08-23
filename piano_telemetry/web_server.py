@@ -21,6 +21,14 @@ from piano_telemetry.analyzer.tonality import (
 from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.controller import MidiController
 from piano_telemetry.core.dispatcher import EventDispatcher
+from piano_telemetry.core.key_mapping import (
+    ALLOWED_KEY_CODES,
+    PIANO_NOTE_MAX,
+    PIANO_NOTE_MIN,
+    KeyboardMappingService,
+    KeyboardMappingSettings,
+    KeyboardMappingStore,
+)
 from piano_telemetry.midi.event import MidiEvent
 from piano_telemetry.midi.ports import list_midi_ports
 from piano_telemetry.midi.router import MidiRouter
@@ -60,6 +68,11 @@ class RecordingStopPayload(BaseModel):
     discard: bool = False
 
 
+class KeyboardMappingPayload(BaseModel):
+    enabled: bool = False
+    bindings: dict[str, str] = Field(default_factory=dict)
+
+
 def create_web_app(
     *,
     settings_store: SettingsStore | None = None,
@@ -68,14 +81,21 @@ def create_web_app(
     midi_ports_provider=list_midi_ports,
     router_factory=MidiRouter,
     recorder: SessionRecorder | None = None,
+    keyboard_mapping_store: KeyboardMappingStore | None = None,
+    keyboard_mapper: KeyboardMappingService | None = None,
     auto_start_midi: bool = True,
 ):
     store = settings_store or SettingsStore()
     event_dispatcher = dispatcher or EventDispatcher[MidiEvent](ingress_capacity=4096)
+    mapping_store = keyboard_mapping_store or KeyboardMappingStore(
+        store.path.parent / "key_mapping.json"
+    )
+    mapper = keyboard_mapper or KeyboardMappingService(mapping_store)
     controller = MidiController(
         event_dispatcher,
         router_factory=router_factory,
         status_provider=virtual_status_provider,
+        keyboard_mapper=mapper,
     )
     hub = WebEventHub(event_dispatcher, tonality=store.load().tonality)
     session_recorder = recorder or SessionRecorder(
@@ -89,6 +109,7 @@ def create_web_app(
         event_dispatcher.start()
         hub.start(asyncio.get_running_loop())
         await asyncio.to_thread(session_recorder.start)
+        await asyncio.to_thread(mapper.start)
         if auto_start_midi:
             try:
                 settings = await asyncio.to_thread(
@@ -108,10 +129,13 @@ def create_web_app(
                 await asyncio.to_thread(controller.stop)
             finally:
                 try:
-                    await asyncio.to_thread(session_recorder.close)
+                    await asyncio.to_thread(mapper.stop)
                 finally:
-                    hub.stop()
-                    event_dispatcher.stop(drain=True)
+                    try:
+                        await asyncio.to_thread(session_recorder.close)
+                    finally:
+                        hub.stop()
+                        event_dispatcher.stop(drain=True)
 
     app = FastAPI(title="Piano Telemetry", version="0.1.0", lifespan=lifespan)
     app.state.settings_store = store
@@ -119,6 +143,7 @@ def create_web_app(
     app.state.midi_controller = controller
     app.state.web_hub = hub
     app.state.session_recorder = session_recorder
+    app.state.keyboard_mapper = mapper
 
     app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
 
@@ -133,6 +158,10 @@ def create_web_app(
     @app.get("/settings", include_in_schema=False)
     async def settings_page():
         return FileResponse(web_root / "settings.html")
+
+    @app.get("/mapping", include_in_schema=False)
+    async def mapping_page():
+        return FileResponse(web_root / "mapping.html")
 
     @app.get("/api/settings")
     async def get_settings() -> dict[str, object]:
@@ -154,6 +183,30 @@ def create_web_app(
         hub.set_tonality(settings.tonality)
         result["midi_restarted"] = restarted
         return result
+
+    @app.get("/api/key-mapping")
+    async def get_key_mapping() -> dict[str, object]:
+        result = mapper.status()
+        result.update(
+            {
+                "allowed_keys": list(ALLOWED_KEY_CODES),
+                "note_min": PIANO_NOTE_MIN,
+                "note_max": PIANO_NOTE_MAX,
+            }
+        )
+        return result
+
+    @app.put("/api/key-mapping")
+    async def put_key_mapping(payload: KeyboardMappingPayload) -> dict[str, object]:
+        try:
+            settings = KeyboardMappingSettings.from_dict(
+                payload.model_dump(),
+                strict=True,
+            )
+            await asyncio.to_thread(mapper.apply, settings)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return mapper.status()
 
     @app.get("/api/tonality")
     async def get_tonality() -> dict[str, object]:
@@ -279,6 +332,7 @@ def create_web_app(
         result["websocket_drop_total"] = hub.client_drop_total
         result["config_path"] = str(store.path)
         result["recording"] = session_recorder.status()
+        result["key_mapping"] = mapper.status()
         return result
 
     @app.get("/api/state")

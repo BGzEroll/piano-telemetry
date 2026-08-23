@@ -130,6 +130,47 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .record-dialog-error:empty { display: none; }
 .record-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
 
+.mapping-shell { width: min(1120px, calc(100% - 40px)); }
+.mapping-status-panel { display: grid; gap: 8px; }
+.mapping-master-toggle { min-height: 58px; border: 0; }
+.mapping-editor-title { align-items: flex-start; }
+.mapping-editor-title > div { display: grid; gap: 7px; }
+.mapping-editor-title p, .keyboard-heading span { margin: 0; color: var(--muted); font-size: 12px; }
+.button.compact { min-height: 34px; padding-inline: 13px; font-size: 12px; }
+.button.learning { color: #fff; border-color: var(--gold); background: var(--gold); }
+.selected-note-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--panel-2); }
+.selected-note-row > span { color: var(--muted); font-size: 12px; }
+.selected-note-row strong { margin-right: auto; font-size: 15px; }
+.mapping-piano-scroll { overflow-x: auto; padding: 8px 4px 13px; scrollbar-color: rgba(22,140,114,.26) transparent; }
+.mapping-piano { position: relative; height: 150px; min-width: 1248px; }
+.mapping-piano-key { position: absolute; top: 0; padding: 0; cursor: pointer; transition: border-color .12s, background .12s, transform .12s; }
+.mapping-piano-key.white { width: 24px; height: 146px; z-index: 1; display: flex; align-items: flex-end; justify-content: center; padding-bottom: 7px; border: 1px solid #ccd7d3; border-radius: 0 0 5px 5px; color: #82918b; background: linear-gradient(90deg, #fff, #f8faf9); font-size: 8px; }
+.mapping-piano-key.black { width: 16px; height: 92px; z-index: 2; border: 1px solid #17231f; border-radius: 0 0 4px 4px; background: linear-gradient(90deg, #27332f, #111a17); box-shadow: 0 3px 5px rgba(20,31,27,.22); }
+.mapping-piano-key:hover { border-color: var(--gold); }
+.mapping-piano-key.white.bound { background: #dff3ed; }
+.mapping-piano-key.black.bound { background: #168c72; border-color: #0c725c; }
+.mapping-piano-key.selected { z-index: 3; border-color: #e2a838; background: #ffe9a9; transform: translateY(2px); box-shadow: 0 0 0 2px rgba(226,168,56,.2); }
+.mapping-piano-key.black.selected { background: #e2a838; }
+.keyboard-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; margin: 24px 0 15px; }
+.keyboard-heading h2 { margin: 0; font-size: 19px; }
+.computer-keyboard { display: grid; gap: 8px; padding: 18px; overflow-x: auto; border-radius: var(--radius-lg); background: #eef3f1; }
+.computer-key-row { min-width: 760px; display: flex; justify-content: center; gap: 8px; }
+.computer-key-row.row-2 { padding-left: 24px; }
+.computer-key-row.row-3 { padding-right: 65px; }
+.computer-key { width: 68px; height: 58px; display: grid; place-items: center; align-content: center; gap: 3px; overflow: hidden; border: 1px solid rgba(24,52,44,.13); border-radius: 11px; color: var(--text); background: #fff; box-shadow: 0 3px 0 #d5dfdb; cursor: pointer; }
+.computer-key:hover { border-color: rgba(22,140,114,.45); transform: translateY(-1px); }
+.computer-key b { font-size: 15px; }
+.computer-key small { width: 100%; min-height: 12px; overflow: hidden; padding-inline: 3px; color: var(--muted); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.computer-key.assigned { color: #0d725c; border-color: rgba(22,140,114,.3); background: #e9f7f3; box-shadow: 0 3px 0 #b9ded3; }
+.computer-key.selected-binding { border-color: #e2a838; box-shadow: 0 0 0 3px rgba(226,168,56,.16), 0 3px 0 #e6d6a8; }
+.binding-count { color: var(--muted); font-size: 12px; }
+.binding-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.binding-empty { color: var(--muted); font-size: 12px; }
+.binding-chip { min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--text); background: #f8fbfa; cursor: pointer; }
+.binding-chip:hover { border-color: rgba(22,140,114,.32); background: #f1f8f6; }
+.binding-chip span { color: var(--green); font-weight: 700; }
+.binding-chip i { color: var(--muted); font-style: normal; }
+
 @media (max-width: 760px) {
   .page-heading { align-items: flex-start; gap: 18px; flex-direction: column; }
   .topbar { padding-inline: 16px; }
@@ -147,4 +188,9 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
   .visual-footer { flex-wrap: wrap; gap: 8px 14px; }
   .record-message { margin-left: 0; margin-right: 0; }
   .record-dialog { padding: 20px; }
+  .nav-links { gap: 2px; }
+  .nav-links a { padding-inline: 9px; }
+  .mapping-editor-title, .keyboard-heading { align-items: flex-start; flex-direction: column; }
+  .selected-note-row { flex-wrap: wrap; }
+  .selected-note-row strong { width: calc(100% - 80px); margin-right: 0; }
 }

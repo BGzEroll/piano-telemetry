@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from threading import RLock
+from typing import TYPE_CHECKING
 
 from piano_telemetry.midi.event import MidiEvent
 from piano_telemetry.midi.router import MidiRouter, MidiRouterConfig
@@ -13,6 +14,9 @@ from piano_telemetry.midi.virtual_midi import (
 from .config import AppSettings
 from .dispatcher import EventDispatcher
 
+if TYPE_CHECKING:
+    from .key_mapping import KeyboardMappingService
+
 
 class MidiController:
     """Own the router lifecycle for HTTP control without touching observers."""
@@ -23,6 +27,7 @@ class MidiController:
         *,
         router_factory=MidiRouter,
         status_provider=virtual_midi_status,
+        keyboard_mapper: KeyboardMappingService | None = None,
     ) -> None:
         self.dispatcher = dispatcher
         self._lock = RLock()
@@ -30,6 +35,7 @@ class MidiController:
         self._last_error: str | None = None
         self._router_factory = router_factory
         self._status_provider = status_provider
+        self._keyboard_mapper = keyboard_mapper
 
     def start(self, settings: AppSettings) -> dict[str, object]:
         with self._lock:
@@ -51,6 +57,9 @@ class MidiController:
                 ),
                 self.dispatcher,
             )
+            callback_setter = getattr(router, "set_post_forward_callback", None)
+            if callback_setter is not None and self._keyboard_mapper is not None:
+                callback_setter(self._keyboard_mapper.offer_midi)
             try:
                 router.start()
             except Exception as exc:
@@ -66,6 +75,8 @@ class MidiController:
             self._router = None
             if router is not None:
                 router.stop()
+            if self._keyboard_mapper is not None:
+                self._keyboard_mapper.release_all()
             return self.status()
 
     def status(self) -> dict[str, object]:
