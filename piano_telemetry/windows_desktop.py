@@ -49,6 +49,16 @@ LR_LOADFROMFILE = 0x00000010
 EXIT_BUTTON_ID = 1001
 ACTION_TIMER_ID = 1
 
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_ASSIGN_PRIMARY = 0x0001
+TOKEN_DUPLICATE = 0x0002
+TOKEN_QUERY = 0x0008
+MAXIMUM_ALLOWED = 0x02000000
+SECURITY_IMPERSONATION = 2
+TOKEN_PRIMARY = 1
+LOGON_WITH_PROFILE = 0x00000001
+CREATE_UNICODE_ENVIRONMENT = 0x00000400
+
 LRESULT = ctypes.c_ssize_t
 WNDPROC = ctypes.WINFUNCTYPE(
     LRESULT,
@@ -76,6 +86,38 @@ class WNDCLASSEXW(ctypes.Structure):
     )
 
 
+class STARTUPINFOW(ctypes.Structure):
+    _fields_ = (
+        ("cb", wintypes.DWORD),
+        ("lpReserved", wintypes.LPWSTR),
+        ("lpDesktop", wintypes.LPWSTR),
+        ("lpTitle", wintypes.LPWSTR),
+        ("dwX", wintypes.DWORD),
+        ("dwY", wintypes.DWORD),
+        ("dwXSize", wintypes.DWORD),
+        ("dwYSize", wintypes.DWORD),
+        ("dwXCountChars", wintypes.DWORD),
+        ("dwYCountChars", wintypes.DWORD),
+        ("dwFillAttribute", wintypes.DWORD),
+        ("dwFlags", wintypes.DWORD),
+        ("wShowWindow", wintypes.WORD),
+        ("cbReserved2", wintypes.WORD),
+        ("lpReserved2", ctypes.POINTER(wintypes.BYTE)),
+        ("hStdInput", wintypes.HANDLE),
+        ("hStdOutput", wintypes.HANDLE),
+        ("hStdError", wintypes.HANDLE),
+    )
+
+
+class PROCESS_INFORMATION(ctypes.Structure):
+    _fields_ = (
+        ("hProcess", wintypes.HANDLE),
+        ("hThread", wintypes.HANDLE),
+        ("dwProcessId", wintypes.DWORD),
+        ("dwThreadId", wintypes.DWORD),
+    )
+
+
 def runtime_asset_path(name: str) -> Path:
     if getattr(sys, "frozen", False):
         root = Path(getattr(sys, "_MEIPASS"))
@@ -89,6 +131,139 @@ def configure_windows_app_identity() -> None:
     setter.argtypes = [wintypes.LPCWSTR]
     setter.restype = ctypes.HRESULT
     setter("PianoTelemetry.Desktop")
+
+
+def webui_url(host: str, port: int) -> str:
+    browser_host = "127.0.0.1" if host in {"0.0.0.0", "::"} else host
+    return f"http://{browser_host}:{port}/"
+
+
+def open_webui_unelevated(url: str) -> None:
+    """Open a URL with the desktop shell token, even when this app is elevated."""
+    try:
+        _open_with_explorer_token(url)
+    except OSError:
+        shell32 = ctypes.windll.shell32
+        shell32.ShellExecuteW.argtypes = [
+            wintypes.HWND,
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            wintypes.LPCWSTR,
+            ctypes.c_int,
+        ]
+        shell32.ShellExecuteW.restype = wintypes.HINSTANCE
+        result = shell32.ShellExecuteW(None, "open", url, None, None, SW_SHOW)
+        if int(result or 0) <= 32:
+            raise ctypes.WinError()
+
+
+def _open_with_explorer_token(url: str) -> None:
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    advapi32 = ctypes.windll.advapi32
+
+    user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+    user32.FindWindowW.restype = wintypes.HWND
+    user32.GetWindowThreadProcessId.argtypes = [
+        wintypes.HWND,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    advapi32.OpenProcessToken.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.DuplicateTokenEx.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.POINTER(wintypes.HANDLE),
+    ]
+    advapi32.DuplicateTokenEx.restype = wintypes.BOOL
+    advapi32.CreateProcessWithTokenW.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        wintypes.LPCWSTR,
+        wintypes.LPWSTR,
+        wintypes.DWORD,
+        wintypes.LPVOID,
+        wintypes.LPCWSTR,
+        ctypes.POINTER(STARTUPINFOW),
+        ctypes.POINTER(PROCESS_INFORMATION),
+    ]
+    advapi32.CreateProcessWithTokenW.restype = wintypes.BOOL
+
+    shell_window = user32.FindWindowW("Shell_TrayWnd", None)
+    if not shell_window:
+        raise ctypes.WinError()
+    process_id = wintypes.DWORD()
+    user32.GetWindowThreadProcessId(shell_window, ctypes.byref(process_id))
+    if not process_id.value:
+        raise ctypes.WinError()
+
+    process = kernel32.OpenProcess(
+        PROCESS_QUERY_LIMITED_INFORMATION,
+        False,
+        process_id.value,
+    )
+    if not process:
+        raise ctypes.WinError()
+
+    token = wintypes.HANDLE()
+    primary_token = wintypes.HANDLE()
+    process_info = PROCESS_INFORMATION()
+    try:
+        if not advapi32.OpenProcessToken(
+            process,
+            TOKEN_QUERY | TOKEN_DUPLICATE,
+            ctypes.byref(token),
+        ):
+            raise ctypes.WinError()
+        if not advapi32.DuplicateTokenEx(
+            token,
+            MAXIMUM_ALLOWED,
+            None,
+            SECURITY_IMPERSONATION,
+            TOKEN_PRIMARY,
+            ctypes.byref(primary_token),
+        ):
+            raise ctypes.WinError()
+
+        explorer = Path(os.environ.get("WINDIR", r"C:\Windows")) / "explorer.exe"
+        command = ctypes.create_unicode_buffer(f'"{explorer}" "{url}"')
+        startup = STARTUPINFOW()
+        startup.cb = ctypes.sizeof(STARTUPINFOW)
+        if not advapi32.CreateProcessWithTokenW(
+            primary_token,
+            LOGON_WITH_PROFILE,
+            None,
+            command,
+            CREATE_UNICODE_ENVIRONMENT,
+            None,
+            None,
+            ctypes.byref(startup),
+            ctypes.byref(process_info),
+        ):
+            raise ctypes.WinError()
+    finally:
+        for handle in (
+            process_info.hThread,
+            process_info.hProcess,
+            primary_token,
+            token,
+            process,
+        ):
+            if handle:
+                kernel32.CloseHandle(handle)
 
 
 def _configure_win32() -> tuple[object, object, object]:
@@ -461,11 +636,18 @@ class NativeControlWindow:
 
 
 class WindowsDesktopApp:
-    def __init__(self, *, host: str = "127.0.0.1", port: int = 8765) -> None:
+    def __init__(
+        self,
+        *,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        browser_opener=open_webui_unelevated,
+    ) -> None:
         self.host = host
         self.port = port
         self.actions: queue.SimpleQueue[str] = queue.SimpleQueue()
         self.server = DesktopWebServer(host, port)
+        self.browser_opener = browser_opener
         self.tray = WindowsTrayIcon(
             runtime_asset_path("piano-emoji.ico"),
             self.actions,
@@ -489,6 +671,12 @@ class WindowsDesktopApp:
             self.window.show_error(str(exc))
             self.window.close()
             return 2
+
+        try:
+            self.browser_opener(webui_url(self.host, self.port))
+        except OSError:
+            # Browser launch is a convenience and must not stop MIDI routing.
+            pass
 
         self.window.run()
         self.window.close()
