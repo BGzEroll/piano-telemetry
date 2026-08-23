@@ -31,10 +31,10 @@ def test_mapping_service_emits_key_down_and_up_without_midi_thread_waiting(
     sender = FakeKeySender()
     store = KeyboardMappingStore(tmp_path / "key_mapping.json")
     service = KeyboardMappingService(store, sender=sender)
+    service.start()
     service.apply(
         KeyboardMappingSettings(enabled=True, bindings=((60, "KeyA"),))
     )
-    service.start()
     try:
         assert service.offer_midi([0x90, 60, 100]) is True
         assert service.offer_midi([0x90, 60, 0]) is True
@@ -52,13 +52,13 @@ def test_shared_keyboard_target_uses_reference_count_and_disable_releases(
         KeyboardMappingStore(tmp_path / "key_mapping.json"),
         sender=sender,
     )
+    service.start()
     service.apply(
         KeyboardMappingSettings(
             enabled=True,
             bindings=((60, "Digit1"), (64, "Digit1")),
         )
     )
-    service.start()
     try:
         service.offer_midi([0x90, 60, 90])
         service.offer_midi([0x90, 64, 90])
@@ -92,3 +92,22 @@ def test_mapping_store_round_trip_and_strict_validation(tmp_path: Path) -> None:
         assert "不支持" in str(exc)
     else:
         raise AssertionError("Numpad binding should be rejected")
+
+
+def test_service_start_disables_saved_mapping_but_keeps_bindings(tmp_path: Path) -> None:
+    store = KeyboardMappingStore(tmp_path / "key_mapping.json")
+    store.save(
+        KeyboardMappingSettings(enabled=True, bindings=((60, "KeyA"),))
+    )
+    service = KeyboardMappingService(store, sender=FakeKeySender())
+
+    service.start()
+    try:
+        assert service.status()["enabled"] is False
+        assert service.status()["bindings"] == {"60": "KeyA"}
+        assert store.load() == KeyboardMappingSettings(
+            enabled=False,
+            bindings=((60, "KeyA"),),
+        )
+    finally:
+        service.stop()

@@ -137,6 +137,22 @@ class KeyboardMappingService:
     def start(self) -> None:
         if self._thread is not None and self._thread.is_alive():
             return
+        disabled_settings: KeyboardMappingSettings | None = None
+        with self._settings_lock:
+            if self._settings.enabled:
+                self._settings = KeyboardMappingSettings(
+                    enabled=False,
+                    bindings=self._settings.bindings,
+                )
+                self._bindings = self._settings.binding_map()
+                self._generation += 1
+                disabled_settings = self._settings
+        if disabled_settings is not None:
+            try:
+                self.store.save(disabled_settings)
+            except OSError:
+                # Runtime safety takes precedence if persistence is unavailable.
+                pass
         self._stop_requested.clear()
         self._reset_requested.clear()
         self._accepting = True
