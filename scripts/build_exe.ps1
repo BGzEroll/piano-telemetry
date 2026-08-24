@@ -1,11 +1,12 @@
 $ErrorActionPreference = 'Stop'
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
-$PythonExe = 'C:\software\miniconda3\miniconda3\envs\piano-midi\python.exe'
+$PythonCommand = Get-Command python -ErrorAction SilentlyContinue
 
-if (-not (Test-Path -LiteralPath $PythonExe)) {
-    throw "piano-midi Python not found: $PythonExe"
+if ($null -eq $PythonCommand) {
+    throw 'Python not found. Activate the piano-midi environment before building.'
 }
+$PythonExe = $PythonCommand.Source
 
 & $PythonExe -m PyInstaller --noconfirm --clean "$ProjectRoot\PianoTelemetry.spec"
 

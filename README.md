@@ -1,140 +1,246 @@
 # Piano Telemetry
 
-Windows 电钢琴 MIDI 低延迟透传和尽力而为的遥测基础服务。
+Piano Telemetry 是一个面向 Windows 电钢琴的低延迟 MIDI 中间件。它将电钢输入优先透传到虚拟输出，同时提供实时可视化、录制、MIDI 到电脑键盘映射，以及可选的 OpenClaw 录制推送能力。
 
-当前已实现 Phase 0/1、Phase 2 录制和 Phase 3 Web 基础：
+核心原则是：**绝不让可视化、录制、键盘映射或网络上传阻塞 MIDI 实时链路**。观察链路过载时允许丢弃数据，但 MIDI 透传优先执行。
 
-- MIDI 输入、输出端口枚举。
-- 可选物理/虚拟 MIDI 输入、固定虚拟输出和优先透传。
-- 有界入口队列。
-- 广播 Dispatcher。
-- 每订阅者独立、有界队列。
-- 订阅者过载丢弃和指标统计。
-- Session 状态机和 JSONL 录制。
-- 异常退出后的 `.part` Session 恢复。
-- Session 结束后的 Standard MIDI 导出。
-- 默认可视化首页和设置页。
-- 实时 WebSocket、MIDI 瀑布流、当前音符谱表和钢琴键盘。
-- Web Session 录制控制及实时录制时长。
-- 输入端口选择、固定虚拟输出、驱动检测及 Web 启停 MIDI 路由。
-- 单文件 Windows EXE 打包。
+## 主要功能
 
-## 环境
+- 自由选择物理电钢或托管虚拟端口作为 MIDI 输入。
+- 动态创建 `Piano Telemetry Input` 和 `Piano Telemetry Output`，停止 MIDI 或退出时自动销毁。
+- 实时瀑布流、88 键钢琴键盘、当前谱表、调式、和弦、力度及延音显示。
+- 录制 Session，并导出 JSON 元数据、JSONL 事件流和 Standard MIDI 文件。
+- 电钢琴键映射到电脑主键盘数字键、字母键，支持随时启停。
+- 中文名称映射预设，支持保存、加载、覆盖、删除和清空当前映射。
+- 手动将录制四件套打包为 ZIP 并推送至 OpenClaw 接收服务。
+- 历史录制补推、推送状态持久化，以及 401、409、网络不可达等错误提示。
+- 单文件 Windows EXE、系统托盘、管理员权限启动及自动打开 WebUI。
 
-项目使用 Conda 环境 `piano-midi`：
+## 系统要求
+
+- Windows 10 或 Windows 11。
+- 源码运行需要 Python 3.12，推荐使用 Miniconda。
+- 需要安装 [loopMIDI / teVirtualMIDI 驱动](https://www.tobias-erichsen.de/software/loopmidi.html)。
+
+程序只调用系统中已安装的 `teVirtualMIDI.dll`，不会分发或捆绑第三方 SDK、DLL。安装 loopMIDI 后无需保持 `loopMIDI.exe` 运行。
+
+## 从源码运行
+
+创建并启用 Conda 环境：
 
 ```powershell
-& 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi python -m pip install -e '.[dev]'
+conda create -n piano-midi python=3.12
+conda activate piano-midi
+python -m pip install -e ".[dev]"
 ```
 
-## Web 界面
-
-不带参数运行时会启动本地 Web 界面并直接打开可视化页面：
+启动本地 WebUI：
 
 ```powershell
 python -m piano_telemetry
 ```
 
-也可以显式运行：
+默认访问地址：
 
-```powershell
-python -m piano_telemetry serve --port 8765
+```text
+http://127.0.0.1:8765/
 ```
 
-访问地址为 `http://127.0.0.1:8765/`：
+也可以指定监听地址和端口：
 
-- `可视化`：实时瀑布流、当前音符谱表、钢琴键盘、演奏指标和录制控制。
-- `设置`：输入端口选择、固定虚拟输出、驱动状态以及 MIDI 路由启动/停止。
+```powershell
+python -m piano_telemetry serve --host 127.0.0.1 --port 8765
+```
 
-路由运行时点击“保存设置”，程序会关闭并重启 MIDI 路由，以应用输入端口和系统消息选项。
+## 使用 EXE
 
-点击可视化页面右上角的“开始录制”即可创建 Session；录制期间按钮显示已录制时长。再次点击会弹出“保存名称”窗口：选择“保存”后完成 JSONL、摘要和 Standard MIDI 导出，并写入程序目录下的 `data\sessions\<保存名称>\`；选择“不保存”则删除本次录制。录制使用独立有界队列，写盘过载时会丢弃录制事件并将 Session 标记为不完整，不会阻塞实时 MIDI 路由。点击“停止 MIDI”或退出程序时，正在进行的录制也会自动完成并以 Session ID 保存，避免意外丢失。
+将 `Piano Telemetry.exe` 放在当前用户有写入权限的目录后双击运行。程序会请求管理员权限、启动本地服务、打开 WebUI，并最小化到系统托盘。
 
-程序启动后会读取已保存的输入端口并自动启动 MIDI。若该端口已断开或不存在，会将设置回退并写回为 `Piano Telemetry Input`，然后使用托管虚拟输入启动。
+托盘菜单只有“退出”。桌面小窗口的关闭和最小化按钮都会隐藏到托盘，不会结束 MIDI 服务。
 
-输入端口可以在设置页自由选择：连接电钢时选择电钢端口，运行测试脚本时选择 `Piano Telemetry Input`。输出固定为 `Piano Telemetry Output`。
+运行过程中产生的设置、预设和录制均保存在 EXE 同级的 `data` 目录，因此 EXE 不依赖启动时的当前工作目录。不建议放入 `Program Files` 等普通用户不可写目录。
 
-选择 `Piano Telemetry Input` 并启动 MIDI 后，程序会动态创建以下输入端口，停止或退出时自动删除：
+## WebUI 页面
 
-- `Piano Telemetry Input`：测试脚本或其他 MIDI 软件向这里发送。
+### 可视化
 
-无论选择哪个输入，程序都会动态创建 `Piano Telemetry Output`，NanoHost 应监听此端口。
+- 显示实时瀑布音条、钢琴键盘和当前五线谱。
+- 可选择十二平均律中的大小调，谱表和和弦名称同步变化。
+- 显示当前和弦、力度、延音、事件序号和实时连接状态。
+- 可开始和结束录制，并为录制指定中文保存名称。
 
-点击“停止 MIDI”或退出程序时，程序会关闭 teVirtualMIDI 端口句柄；本次创建的 `Piano Telemetry Input`（如有）和 `Piano Telemetry Output` 会随即从系统中消失。
+### 按键映射
 
-程序直接调用系统安装的 `teVirtualMIDI.dll`，不会将 SDK 或 DLL 打入 EXE。未安装驱动时，设置页会显示安装提示并禁止启动 MIDI。可通过安装 [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html) 获得驱动；不需要运行 `loopMIDI.exe`。
+- 将 MIDI 21–108 的钢琴键绑定到主键盘 `0–9`、`A–Z`。
+- 支持点击钢琴键选键，也可以直接按下电钢琴键进行学习。
+- 支持多个钢琴键映射到同一个电脑键，并使用引用计数避免提前松键。
+- 映射功能每次启动软件时默认关闭。
+- 预设是当前绑定的快照，不保存启用状态；加载预设会保留当前开关状态并安全释放旧按键。
+- “清空当前映射”只清除当前绑定，不会删除已保存预设。
+
+打包版以管理员权限运行，因此可以向同样以管理员身份运行的前台程序发送键盘事件。
+
+### 录制记录
+
+- 查看已经保存且四件套完整的 Session。
+- OpenClaw 推送启用后，可以手动补推历史录制。
+- 已推送状态按照“服务器地址 + Session ID”记录，更换服务器后仍可推送到新服务器。
+
+### 设置
+
+- 选择 MIDI 输入端口并查看固定的虚拟输出端口。
+- 控制 SysEx、MIDI Clock、Active Sensing 和退出清音。
+- 配置 OpenClaw 服务器地址、共享密钥和手动推送开关。
+- 修改 MIDI 相关配置时会重启路由；只修改推送配置不会重启 MIDI。
+
+## MIDI 路由
+
+连接电钢时，在设置页面选择实际电钢输入端口。脚本或其他 MIDI 软件需要向程序发送数据时，可以选择 `Piano Telemetry Input`。
+
+输出端口固定为：
+
+```text
+Piano Telemetry Output
+```
+
+NanoHost、DAW 或软音源应监听该输出端口。无论输入来自物理电钢还是虚拟输入，实时路径均为：
+
+```text
+MIDI 输入 → Piano Telemetry → Piano Telemetry Output → 音源
+```
+
+默认过滤 SysEx、MIDI Clock 和 Active Sensing，可在设置页面或 CLI 中按需开启。
+
+## 录制格式
+
+每次保存的录制位于：
+
+```text
+data/sessions/<保存名称>/
+├── session.json
+├── summary.json
+├── events.jsonl
+└── session.mid
+```
+
+录制使用独立有界队列。磁盘过慢或队列过载时，程序会丢弃部分录制事件并把 Session 标记为可能不完整，而不会反向阻塞 MIDI 透传。
+
+## OpenClaw 手动推送
+
+OpenClaw 推送默认关闭。启用前需要在设置页面填写远端 HTTP 服务地址和共享密钥。
+
+保存录制后，页面会询问是否立即推送；也可以在“录制记录”页面补推。程序会临时创建一个包含四件套的 ZIP，上传完成或失败后立即删除临时 ZIP，本地 Session 始终保留。
+
+ZIP 内部使用固定 ASCII 文件名且不包含嵌套目录。外层 ZIP 文件名支持中文，并会自动替换 Windows 不允许的字符。
+
+共享密钥保存在本地 `data/config.json`，Web API 不会将密钥回显到页面。当前上传协议面向可信局域网使用 HTTP，不提供 HTTPS、自动重试或自动上传。
+
+## 数据目录
+
+```text
+data/
+├── config.json                  # MIDI、调式和 OpenClaw 设置
+├── key_mapping.json             # 当前键盘映射
+├── key_mapping_presets.json     # 映射预设
+├── push_history.json            # 已推送 Session 记录
+└── sessions/                    # 录制 Session
+```
+
+## CLI
 
 列出 MIDI 端口：
 
 ```powershell
-& 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi piano-telemetry ports
+piano-telemetry ports
 ```
 
-启动透传：
+启动托管虚拟 MIDI 路由：
 
 ```powershell
-& 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi piano-telemetry route
+piano-telemetry route
 ```
 
-从指定电钢输入端口启动透传：
+指定物理输入：
 
 ```powershell
-& 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi piano-telemetry route --input "电钢端口名称"
+piano-telemetry route --input "电钢端口名称"
 ```
 
-启动透传并录制一个 Session：
+启动路由并录制：
 
 ```powershell
-& 'C:\software\miniconda3\miniconda3\Scripts\conda.exe' run -n piano-midi piano-telemetry route `
+piano-telemetry route `
   --record `
   --piece "练习曲名称" `
   --target-bpm 80
 ```
 
-按 `Ctrl+C` 后，Session 默认写入程序目录下的 `data\sessions\<session_id>\`，其中包含 `session.json`、`events.jsonl`、`summary.json` 和 `session.mid`。EXE 模式下，“程序目录”就是 `PianoTelemetry.exe` 所在目录；源码模式下则是启动命令时的当前目录。
+按 `Ctrl+C` 后，Session 会写入 `data/sessions/<session_id>/`。
 
-默认过滤 SysEx、MIDI Clock 和 Active Sensing。可以分别使用 `--receive-sysex`、`--receive-clock`、`--receive-active-sensing` 开启接收与透传。它们仍不会改变“先输出、后发布观察事件”的顺序。
+系统消息选项：
 
-设置保存在程序目录下的 `data\config.json`。
+```text
+--receive-sysex
+--receive-clock
+--receive-active-sensing
+--no-panic-on-stop
+```
 
-## NanoHost 联调曲目
+## 测试 MIDI 播放
 
-先在设置页启动 MIDI，再让 NanoHost 监听 `Piano Telemetry Output`，然后播放内置的原创 MIDI 测试曲：
+先启动 MIDI 路由，并让音源监听 `Piano Telemetry Output`：
 
 ```powershell
 conda activate piano-midi
-python tests\play_demo_midi.py
+python tests/play_demo_midi.py
 ```
 
-脚本默认向 `Piano Telemetry Input` 发送。可使用 `--list-ports` 查看端口，或通过 `--port "完整端口名"`、`--bpm 90` 调整目标端口和速度。播放过程中按 `Ctrl+C` 会发送延音关闭、All Notes Off 和 All Sound Off。
+脚本默认向 `Piano Telemetry Input` 发送。使用 `--list-ports` 查看端口，使用 `--port "完整端口名"` 指定端口，使用 `--bpm 90` 调整速度。
 
-## MIDI 延迟基准
+## 延迟基准
 
-关闭正在运行的 Piano Telemetry，然后从项目根目录运行本机闭环基准：
+关闭正在运行的 Piano Telemetry 后执行：
 
 ```powershell
 conda activate piano-midi
-python tests\benchmark_midi_latency.py
+python tests/benchmark_midi_latency.py
 ```
 
-脚本会自行创建托管虚拟端口，预热后逐条发送 MIDI 消息，并统计端到端的 min、median、mean、P95、P99 和 max。若 Web UI 或 CLI 已经启动 MIDI，可改用 `--existing-router` 连接现有端口。可通过 `--samples 5000`、`--warmup 500`、`--interval-ms 1` 调整样本数和发送节奏。
+若要测试已经运行的路由：
 
-该结果包含测试客户端、两次 Windows 虚拟 MIDI 传递以及中间件转发，不包含电钢琴 USB、NanoHost/VST 处理和音频设备缓冲延迟。
+```powershell
+python tests/benchmark_midi_latency.py --existing-router
+```
+
+基准结果包含测试客户端、两次 Windows 虚拟 MIDI 传递和中间件转发，不包含电钢 USB、音源处理和音频设备缓冲延迟。
 
 ## 构建 EXE
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build_exe.ps1
+conda activate piano-midi
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_exe.ps1
 ```
 
 输出文件：
 
 ```text
-dist\PianoTelemetry.exe
+dist/Piano Telemetry.exe
 ```
 
-EXE 内置全部 HTML、CSS、JavaScript、Python 运行时和 Conda 所需 DLL，可以复制到其他目录运行。第三方 `teVirtualMIDI.dll` 不包含在内，必须由用户自行安装。双击或不带参数启动时会直接打开可视化页面。
+EXE 内置 Web 资源、Python 运行时及所需依赖，但不包含 `teVirtualMIDI.dll`。
 
-首次保存设置或录制时，EXE 会在自身所在目录创建 `data`。因此应将 EXE 放在当前用户有写入权限的位置，不建议直接放入 `Program Files`。
+## 项目结构
 
-Uvicorn 的 WebSocket 运行库已作为正式依赖并打入 EXE。浏览器日志中的静态资源 `304 Not Modified` 表示资源缓存仍然有效，是正常响应，不是加载失败。
+```text
+piano_telemetry/
+├── analyzer/        # 调式、和弦及演奏状态分析
+├── core/            # 配置、事件分发、控制器和键盘映射
+├── midi/            # MIDI 端口、路由及虚拟端口
+├── push/            # OpenClaw ZIP 打包与上传
+├── recorder/        # Session 录制和 MIDI 导出
+├── web/             # WebUI 页面和静态资源
+├── web_hub.py       # WebSocket 广播
+└── web_server.py    # FastAPI 接口
+```
+
+更详细的架构和实时链路审计参见 `docs` 目录。
