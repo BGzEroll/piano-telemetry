@@ -11,6 +11,10 @@ from piano_telemetry.analyzer.tonality import DEFAULT_TONALITY, normalize_tonali
 from piano_telemetry.midi.virtual_midi import VIRTUAL_INPUT_PORT_NAME
 
 
+DEFAULT_PUSH_SERVER_URL = "http://192.168.114.103:8767"
+DEFAULT_PUSH_TOKEN = "CHANGE_ME"
+
+
 def application_directory() -> Path:
     """Directory containing the EXE, or the current directory in source mode."""
     if getattr(sys, "frozen", False):
@@ -34,6 +38,9 @@ class AppSettings:
     receive_clock: bool = False
     receive_active_sensing: bool = False
     panic_on_stop: bool = True
+    push_enabled: bool = False
+    push_server_url: str = DEFAULT_PUSH_SERVER_URL
+    push_token: str = DEFAULT_PUSH_TOKEN
 
     @classmethod
     def from_dict(cls, payload: dict[str, object]) -> "AppSettings":
@@ -48,11 +55,21 @@ class AppSettings:
             )
         if "tonality" in values:
             values["tonality"] = normalize_tonality(values["tonality"])
+        if "push_server_url" in values:
+            server_url = values["push_server_url"]
+            values["push_server_url"] = (
+                server_url.strip()
+                if isinstance(server_url, str) and server_url.strip()
+                else DEFAULT_PUSH_SERVER_URL
+            )
+        if "push_token" in values and not isinstance(values["push_token"], str):
+            values["push_token"] = DEFAULT_PUSH_TOKEN
         for key in (
             "receive_sysex",
             "receive_clock",
             "receive_active_sensing",
             "panic_on_stop",
+            "push_enabled",
         ):
             if key in values:
                 values[key] = bool(values[key])

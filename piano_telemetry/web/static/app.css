@@ -42,6 +42,11 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .route-arrow { display: grid; place-items: center; width: 34px; height: 34px; align-self: end; justify-self: center; margin-bottom: 6px; border-radius: 11px; color: var(--gold); background: rgba(22,140,114,.07); font-size: 18px; line-height: 1; }
 .field { display: grid; gap: 9px; }
 .field > span { font-size: 13px; font-weight: 700; }
+.text-input { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); background: linear-gradient(180deg, #fff, #f8fbfa); outline: 0; transition: border-color .18s, box-shadow .18s, background .18s; }
+.text-input:focus { border-color: rgba(22,140,114,.55); background: #fff; box-shadow: 0 0 0 4px rgba(22,140,114,.1); }
+.field-hint { min-height: 17px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.push-config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.push-toggle-list { margin-bottom: 18px; }
 .toggle-row small { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .custom-select { position: relative; width: 100%; }
 .select-trigger { width: 100%; min-height: 46px; display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--text); background: linear-gradient(180deg, #fff, #f8fbfa); border: 1px solid var(--line); border-radius: var(--radius-md); padding: 0 16px 0 14px; cursor: pointer; box-shadow: 0 1px 2px rgba(24,36,31,.035); text-align: left; transition: border-color .2s, box-shadow .2s, background .2s; }
@@ -129,6 +134,23 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .record-dialog-error { min-height: 18px; color: var(--red); font-size: 12px; }
 .record-dialog-error:empty { display: none; }
 .record-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.push-dialog p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
+.push-dialog-message { min-height: 18px; color: var(--muted); font-size: 12px; }
+.push-dialog-message:empty { display: none; }
+
+.sessions-notice { min-height: 20px; margin: -10px 2px 18px; color: var(--muted); font-size: 12px; }
+.sessions-list { display: grid; gap: 12px; }
+.sessions-empty { padding: 42px 24px; border: 1px dashed rgba(24,52,44,.16); border-radius: var(--radius-lg); color: var(--muted); text-align: center; }
+.session-card { min-height: 94px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--panel); box-shadow: var(--shadow-sm); }
+.session-card-main { min-width: 0; display: grid; gap: 7px; }
+.session-card-main h2 { margin: 0; overflow: hidden; font-size: 17px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.session-card-main span { color: var(--muted); font-size: 11px; }
+.session-card-state { flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 9px; }
+.session-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 9px; color: var(--muted); background: var(--panel-2); font-size: 11px; }
+.session-badge.incomplete { color: #a8751e; background: rgba(226,168,56,.1); }
+.session-badge.pushed { color: var(--green); background: rgba(22,140,114,.08); }
+.session-push-message { max-width: 190px; color: var(--green); font-size: 11px; }
+.session-push-message.error { color: var(--red); }
 
 .mapping-shell { width: min(1120px, calc(100% - 40px)); }
 .mapping-status-panel { display: grid; gap: 8px; }
@@ -179,6 +201,7 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
   .visual-header { align-items: flex-start; gap: 16px; flex-direction: column; }
   .visual-actions { width: 100%; justify-content: space-between; }
   .form-grid { grid-template-columns: 1fr; gap: 15px; }
+  .push-config-grid { grid-template-columns: 1fr; }
   .route-arrow { align-self: center; margin-bottom: 0; transform: rotate(90deg); }
   .settings-action-buttons { flex-wrap: wrap; }
   .metric-strip { grid-template-columns: repeat(2, 1fr); }
@@ -193,4 +216,6 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
   .mapping-editor-title, .keyboard-heading { align-items: flex-start; flex-direction: column; }
   .selected-note-row { flex-wrap: wrap; }
   .selected-note-row strong { width: calc(100% - 80px); margin-right: 0; }
+  .session-card { align-items: flex-start; flex-direction: column; }
+  .session-card-state { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 }

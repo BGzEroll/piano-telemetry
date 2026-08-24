@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Timer
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -18,7 +18,11 @@ from piano_telemetry.analyzer.tonality import (
     normalize_tonality,
     tonalities_payload,
 )
-from piano_telemetry.core.config import AppSettings, SettingsStore
+from piano_telemetry.core.config import (
+    DEFAULT_PUSH_SERVER_URL,
+    AppSettings,
+    SettingsStore,
+)
 from piano_telemetry.core.controller import MidiController
 from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.core.key_mapping import (
@@ -42,6 +46,13 @@ from piano_telemetry.recorder.session_recorder import (
     SessionResult,
     SessionState,
 )
+from piano_telemetry.push import (
+    OpenClawPushError,
+    PushHistoryStore,
+    SessionPushService,
+    normalize_server_url,
+)
+from piano_telemetry.push.openclaw import token_is_configured
 from piano_telemetry.web_hub import WebEventHub
 
 
@@ -52,6 +63,9 @@ class SettingsPayload(BaseModel):
     receive_clock: bool = False
     receive_active_sensing: bool = False
     panic_on_stop: bool = True
+    push_enabled: bool = False
+    push_server_url: str = Field(default=DEFAULT_PUSH_SERVER_URL, max_length=2048)
+    push_token: str | None = Field(default=None, max_length=512)
 
 
 class RecordingStartPayload(BaseModel):
@@ -83,6 +97,7 @@ def create_web_app(
     recorder: SessionRecorder | None = None,
     keyboard_mapping_store: KeyboardMappingStore | None = None,
     keyboard_mapper: KeyboardMappingService | None = None,
+    push_service: SessionPushService | None = None,
     auto_start_midi: bool = True,
 ):
     store = settings_store or SettingsStore()
@@ -101,6 +116,10 @@ def create_web_app(
     session_recorder = recorder or SessionRecorder(
         event_dispatcher,
         sessions_dir=store.path.parent / "sessions",
+    )
+    session_push_service = push_service or SessionPushService(
+        session_recorder.sessions_dir,
+        PushHistoryStore(store.path.parent / "push_history.json"),
     )
     web_root = Path(__file__).resolve().parent / "web"
 
@@ -144,6 +163,7 @@ def create_web_app(
     app.state.web_hub = hub
     app.state.session_recorder = session_recorder
     app.state.keyboard_mapper = mapper
+    app.state.push_service = session_push_service
 
     app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
 
@@ -163,9 +183,13 @@ def create_web_app(
     async def mapping_page():
         return FileResponse(web_root / "mapping.html")
 
+    @app.get("/sessions", include_in_schema=False)
+    async def sessions_page():
+        return FileResponse(web_root / "sessions.html")
+
     @app.get("/api/settings")
     async def get_settings() -> dict[str, object]:
-        return store.load().to_dict()
+        return _public_settings(store.load())
 
     @app.put("/api/settings")
     async def put_settings(payload: SettingsPayload) -> dict[str, object]:
@@ -174,12 +198,12 @@ def create_web_app(
                 _save_and_apply_settings,
                 store,
                 controller,
-                AppSettings.from_dict(payload.model_dump()),
+                _settings_from_payload(payload, store.load()),
                 midi_ports_provider,
             )
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        result = settings.to_dict()
+        result = _public_settings(settings)
         hub.set_tonality(settings.tonality)
         result["midi_restarted"] = restarted
         return result
@@ -263,7 +287,9 @@ def create_web_app(
 
     @app.get("/api/recording")
     async def recording_status() -> dict[str, object]:
-        return session_recorder.status()
+        result = session_recorder.status()
+        result["push_enabled"] = _push_ready(store.load())
+        return result
 
     @app.post("/api/recording/start")
     async def start_recording(
@@ -318,12 +344,54 @@ def create_web_app(
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         payload = session_recorder.status()
+        payload["push_enabled"] = _push_ready(store.load())
         payload["result"] = _recording_result_payload(
             result,
             discarded=selection.discard,
             save_name=save_name,
         )
         return payload
+
+    @app.get("/api/sessions")
+    async def saved_sessions() -> dict[str, object]:
+        settings = store.load()
+        sessions = await asyncio.to_thread(
+            session_push_service.list_sessions,
+            settings,
+        )
+        return {
+            "push_enabled": _push_ready(settings),
+            "server_url": settings.push_server_url,
+            "sessions": sessions,
+        }
+
+    @app.post("/api/sessions/{session_id}/push")
+    async def push_session(session_id: str):
+        try:
+            result = await asyncio.to_thread(
+                session_push_service.push,
+                session_id,
+                store.load(),
+            )
+        except OpenClawPushError as exc:
+            status_code = {
+                "token_error": 401,
+                "archive_invalid": 400,
+                "session_missing": 404,
+                "in_progress": 409,
+                "unreachable": 502,
+                "server_error": 502,
+                "invalid_response": 502,
+            }.get(exc.kind, 409)
+            return JSONResponse(
+                status_code=status_code,
+                content={
+                    "detail": str(exc),
+                    "code": exc.kind,
+                    "remote_status": exc.remote_status,
+                },
+            )
+        return result.to_dict()
 
     @app.get("/api/status")
     async def status() -> dict[str, object]:
@@ -333,6 +401,7 @@ def create_web_app(
         result["config_path"] = str(store.path)
         result["recording"] = session_recorder.status()
         result["key_mapping"] = mapper.status()
+        result["push_enabled"] = _push_ready(store.load())
         return result
 
     @app.get("/api/state")
@@ -478,6 +547,46 @@ def _load_startable_settings(
     return settings
 
 
+def _public_settings(settings: AppSettings) -> dict[str, object]:
+    payload = settings.to_dict()
+    payload["push_token"] = ""
+    payload["push_token_configured"] = token_is_configured(settings.push_token)
+    return payload
+
+
+def _settings_from_payload(
+    payload: SettingsPayload,
+    current: AppSettings,
+) -> AppSettings:
+    values = payload.model_dump()
+    supplied_token = values.get("push_token")
+    values["push_token"] = (
+        supplied_token if isinstance(supplied_token, str) and supplied_token else current.push_token
+    )
+    settings = AppSettings.from_dict(values)
+    try:
+        normalized_url = normalize_server_url(settings.push_server_url)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
+    settings = replace(settings, push_server_url=normalized_url)
+    if settings.push_enabled and not token_is_configured(settings.push_token):
+        raise ValueError("启用推送前请填写真实密钥")
+    return settings
+
+
+def _push_ready(settings: AppSettings) -> bool:
+    return settings.push_enabled and token_is_configured(settings.push_token)
+
+
+_MIDI_SETTING_FIELDS = (
+    "input_port",
+    "receive_sysex",
+    "receive_clock",
+    "receive_active_sensing",
+    "panic_on_stop",
+)
+
+
 def _save_and_apply_settings(
     store: SettingsStore,
     controller: MidiController,
@@ -485,12 +594,17 @@ def _save_and_apply_settings(
     midi_ports_provider,
 ) -> tuple[AppSettings, bool]:
     was_running = bool(controller.status()["running"])
+    previous = store.load()
     store.save(settings)
     settings = _load_startable_settings(store, midi_ports_provider)
-    if was_running:
+    midi_changed = any(
+        getattr(previous, field) != getattr(settings, field)
+        for field in _MIDI_SETTING_FIELDS
+    )
+    if was_running and midi_changed:
         controller.stop()
         controller.start(settings)
-    return settings, was_running
+    return settings, was_running and midi_changed
 
 
 def run_web_server(

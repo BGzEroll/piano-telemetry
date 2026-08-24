@@ -67,10 +67,12 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
             "/",
             "/settings",
             "/mapping",
+            "/sessions",
             "/visualization",
             "/static/app.css",
             "/static/visualization.js",
             "/static/mapping.js",
+            "/static/sessions.js",
         ):
             response = client.get(path)
             assert response.status_code == 200
@@ -87,6 +89,7 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         assert "C1 — C8" not in home_html
         assert 'id="record-toggle"' in home_html
         assert 'id="record-save-name"' in home_html
+        assert 'id="push-dialog-backdrop"' in home_html
         assert 'id="tonality-select"' in home_html
         assert '>当前调式<' in home_html
         assert '>当前和弦<' in home_html
@@ -107,6 +110,8 @@ def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) 
         assert "由程序创建" not in settings_html
         assert 'class="settings-action-buttons"' in settings_html
         assert 'id="route-status"' not in settings_html
+        assert 'id="push-server-url"' in settings_html
+        assert 'id="push-token"' in settings_html
 
 
 def test_key_mapping_page_and_api_persist_bindings(tmp_path: Path) -> None:
@@ -325,6 +330,38 @@ def test_saving_settings_restarts_a_running_midi_route(tmp_path: Path) -> None:
         assert TrackingRouter.instances[-1].config.input_port == "Digital Piano"
         assert TrackingRouter.instances[-1].config.receive_sysex is True
         assert client.get("/api/status").json()["running"] is True
+
+
+def test_push_only_settings_are_masked_and_do_not_restart_midi(tmp_path: Path) -> None:
+    TrackingRouter.instances.clear()
+    store = SettingsStore(tmp_path / "config.json")
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=TrackingRouter,
+    )
+
+    with TestClient(app) as client:
+        original = TrackingRouter.instances[-1]
+        response = client.put(
+            "/api/settings",
+            json={
+                "input_port": VIRTUAL_INPUT_PORT_NAME,
+                "push_enabled": True,
+                "push_server_url": "http://192.168.1.20:8767/",
+                "push_token": "local-secret",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["midi_restarted"] is False
+        assert response.json()["push_token"] == ""
+        assert response.json()["push_token_configured"] is True
+        assert response.json()["push_server_url"] == "http://192.168.1.20:8767"
+        assert len(TrackingRouter.instances) == 1
+        assert original.stopped is False
+        assert store.load().push_token == "local-secret"
 
 
 def test_web_recording_controls_create_a_session(tmp_path: Path) -> None:

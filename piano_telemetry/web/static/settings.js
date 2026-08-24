@@ -13,10 +13,15 @@ const elements = {
   start: document.querySelector('#start-midi'),
   stop: document.querySelector('#stop-midi'),
   installLink: document.querySelector('#driver-install-link'),
+  pushEnabled: document.querySelector('#push-enabled'),
+  pushServerUrl: document.querySelector('#push-server-url'),
+  pushToken: document.querySelector('#push-token'),
+  pushTokenHint: document.querySelector('#push-token-hint'),
 };
 let driverAvailable = false;
 let selectedInput = 'Piano Telemetry Input';
 let selectedTonality = 'C_major';
+let pushTokenConfigured = false;
 
 function closeInputMenu({restoreFocus = false} = {}) {
   elements.inputOptions.hidden = true;
@@ -87,6 +92,14 @@ async function loadEverything() {
     elements.clock.checked = settings.receive_clock;
     elements.active.checked = settings.receive_active_sensing;
     elements.panic.checked = settings.panic_on_stop;
+    elements.pushEnabled.checked = Boolean(settings.push_enabled);
+    elements.pushServerUrl.value = settings.push_server_url || 'http://192.168.114.103:8767';
+    elements.pushToken.value = '';
+    pushTokenConfigured = Boolean(settings.push_token_configured);
+    elements.pushToken.placeholder = pushTokenConfigured ? '已配置，留空则不修改' : '请输入共享密钥';
+    elements.pushTokenHint.textContent = pushTokenConfigured
+      ? '密钥已配置；为安全起见不会在页面中回显。'
+      : '尚未配置真实密钥。';
     selectedTonality = settings.tonality || 'C_major';
     const driverMessage = driverAvailable
       ? '驱动已就绪，端口将在启动 MIDI 时创建。'
@@ -105,23 +118,31 @@ async function loadEverything() {
 }
 
 function currentSettings() {
-  return {
+  const settings = {
     input_port: selectedInput,
     tonality: selectedTonality,
     receive_sysex: elements.sysex.checked,
     receive_clock: elements.clock.checked,
     receive_active_sensing: elements.active.checked,
     panic_on_stop: elements.panic.checked,
+    push_enabled: elements.pushEnabled.checked,
+    push_server_url: elements.pushServerUrl.value.trim(),
   };
+  if (elements.pushToken.value) settings.push_token = elements.pushToken.value;
+  return settings;
 }
 
 async function saveSettings() {
+  if (elements.pushEnabled.checked && !pushTokenConfigured && !elements.pushToken.value) {
+    throw new Error('启用推送前请填写真实密钥');
+  }
   const response = await fetch('/api/settings', {
     method: 'PUT', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify(currentSettings())
   });
   const result = await response.json();
   if (!response.ok) throw new Error(result.detail || '保存失败');
+  pushTokenConfigured = Boolean(result.push_token_configured);
   return result;
 }
 

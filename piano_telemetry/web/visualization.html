@@ -13,6 +13,7 @@
     <div class="nav-links">
       <a class="active" href="/">可视化</a>
       <a href="/mapping">按键映射</a>
+      <a href="/sessions">录制</a>
       <a href="/settings">设置</a>
     </div>
   </nav>
@@ -68,6 +69,18 @@
         <button id="record-discard" class="button danger" type="button">不保存</button>
       </div>
     </form>
+  </div>
+
+  <div id="push-dialog-backdrop" class="record-dialog-backdrop" hidden>
+    <div id="push-dialog" class="record-dialog push-dialog" role="dialog" aria-modal="true" aria-labelledby="push-dialog-title">
+      <strong id="push-dialog-title">是否推送？</strong>
+      <p id="push-dialog-description"></p>
+      <span id="push-dialog-message" class="push-dialog-message" aria-live="polite"></span>
+      <div class="record-dialog-actions">
+        <button id="push-now" class="button primary" type="button">推送</button>
+        <button id="push-later" class="button ghost" type="button">暂不推送</button>
+      </div>
+    </div>
   </div>
   <script src="/static/visualization.js"></script>
 </body>

@@ -16,6 +16,11 @@ const recordSaveName = document.querySelector('#record-save-name');
 const recordDialogError = document.querySelector('#record-dialog-error');
 const recordSaveButton = document.querySelector('#record-save');
 const recordDiscardButton = document.querySelector('#record-discard');
+const pushDialogBackdrop = document.querySelector('#push-dialog-backdrop');
+const pushDialogDescription = document.querySelector('#push-dialog-description');
+const pushDialogMessage = document.querySelector('#push-dialog-message');
+const pushNowButton = document.querySelector('#push-now');
+const pushLaterButton = document.querySelector('#push-later');
 const tonalitySelect = document.querySelector('#tonality-select');
 const tonalityTrigger = document.querySelector('#tonality-trigger');
 const tonalityValue = document.querySelector('#tonality-value');
@@ -50,6 +55,7 @@ let state = {
 };
 let recordingState = {recording: false, finalizing: false, started_at: null};
 let recordingDialogOpen = false;
+let pendingPushResult = null;
 
 function noteKey(channel, note) { return `${channel ?? 0}:${note}`; }
 
@@ -220,6 +226,57 @@ function closeRecordingDialog() {
   recordButton.disabled = Boolean(recordingState.finalizing);
 }
 
+function openPushDialog(result) {
+  pendingPushResult = result;
+  const displayName = result.save_name || `session_${result.session_id.slice(0, 8)}`;
+  pushDialogDescription.textContent = `录制“${displayName}”已保存，是否立即推送到 OpenClaw？`;
+  pushDialogMessage.textContent = '';
+  pushDialogMessage.className = 'push-dialog-message';
+  pushNowButton.disabled = false;
+  pushNowButton.textContent = '推送';
+  pushNowButton.classList.add('primary');
+  pushNowButton.classList.remove('success');
+  pushLaterButton.disabled = false;
+  pushLaterButton.textContent = '暂不推送';
+  pushDialogBackdrop.hidden = false;
+}
+
+function closePushDialog() {
+  pendingPushResult = null;
+  pushDialogBackdrop.hidden = true;
+}
+
+async function pushSavedRecording() {
+  if (!pendingPushResult) return;
+  const sessionId = pendingPushResult.session_id;
+  pushNowButton.disabled = true;
+  pushLaterButton.disabled = true;
+  pushNowButton.textContent = '推送中…';
+  pushDialogMessage.textContent = '';
+  pushDialogMessage.className = 'push-dialog-message';
+  try {
+    const response = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/push`, {method: 'POST'});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || '推送失败');
+    const message = result.message || '已推送';
+    pushNowButton.textContent = message;
+    pushNowButton.classList.remove('primary');
+    pushNowButton.classList.add('success');
+    pushDialogMessage.textContent = result.duplicate ? '服务端已存在，本地已记录为已推送。' : '录制已成功推送。';
+    pushDialogMessage.classList.add('message-success');
+    recordMessage.textContent = result.duplicate ? '服务端已有这次录制' : '录制已推送';
+    recordMessage.classList.remove('error');
+    pushLaterButton.disabled = false;
+    pushLaterButton.textContent = '关闭';
+  } catch (error) {
+    pushNowButton.disabled = false;
+    pushLaterButton.disabled = false;
+    pushNowButton.textContent = '重试';
+    pushDialogMessage.textContent = error.message;
+    pushDialogMessage.classList.add('message-error');
+  }
+}
+
 async function loadRecordingState() {
   try {
     const response = await fetch('/api/recording');
@@ -276,6 +333,7 @@ async function finishRecording(choice) {
       const suffix = status.result.complete ? '' : '，数据可能不完整';
       recordMessage.textContent = `录制已保存，共 ${status.result.event_count} 个事件${suffix}`;
       recordMessage.classList.toggle('error', !status.result.complete);
+      if (status.push_enabled) openPushDialog(status.result);
     }
   } catch (error) {
     recordDialogError.textContent = error.message;
@@ -598,6 +656,8 @@ recordDialog.addEventListener('submit', event => {
   finishRecording({save_name: saveName});
 });
 recordDiscardButton.addEventListener('click', () => finishRecording({discard: true}));
+pushNowButton.addEventListener('click', pushSavedRecording);
+pushLaterButton.addEventListener('click', closePushDialog);
 setInterval(() => {
   if (recordingState.recording) renderRecordingState(recordingState);
 }, 1000);

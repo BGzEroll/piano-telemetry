@@ -13,6 +13,7 @@
     <div class="nav-links">
       <a href="/">可视化</a>
       <a href="/mapping">按键映射</a>
+      <a href="/sessions">录制</a>
       <a class="active" href="/settings">设置</a>
     </div>
   </nav>
@@ -69,6 +70,29 @@
         <label class="toggle-row">
           <span><b>退出时清音</b><small>停止路由时发送 Sustain Off 和 All Notes Off。</small></span>
           <input id="panic-on-stop" type="checkbox" checked><i></i>
+        </label>
+      </div>
+    </section>
+
+    <section class="settings-panel">
+      <div class="panel-title">
+        <h2>OpenClaw 推送</h2>
+      </div>
+      <div class="toggle-list push-toggle-list">
+        <label class="toggle-row">
+          <span><b>启用手动推送</b><small>保存录制后询问是否推送，关闭时不会联系远端服务器。</small></span>
+          <input id="push-enabled" type="checkbox"><i></i>
+        </label>
+      </div>
+      <div class="push-config-grid">
+        <label class="field">
+          <span>远端服务器</span>
+          <input id="push-server-url" class="text-input" type="url" maxlength="2048" autocomplete="url" spellcheck="false">
+        </label>
+        <label class="field">
+          <span>共享密钥</span>
+          <input id="push-token" class="text-input" type="password" maxlength="512" autocomplete="new-password" spellcheck="false">
+          <small id="push-token-hint" class="field-hint"></small>
         </label>
       </div>
     </section>

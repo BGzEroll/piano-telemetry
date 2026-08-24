@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>录制记录 · Piano Telemetry</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="/">Piano <span>Telemetry</span></a>
+    <div class="nav-links">
+      <a href="/">可视化</a>
+      <a href="/mapping">按键映射</a>
+      <a class="active" href="/sessions">录制</a>
+      <a href="/settings">设置</a>
+    </div>
+  </nav>
+
+  <main class="page-shell sessions-shell">
+    <header class="page-heading">
+      <h1>录制记录</h1>
+      <button id="refresh-sessions" class="button ghost" type="button">刷新</button>
+    </header>
+    <div id="sessions-notice" class="sessions-notice" aria-live="polite"></div>
+    <section id="sessions-list" class="sessions-list"></section>
+  </main>
+  <script src="/static/sessions.js"></script>
+</body>
+</html>
