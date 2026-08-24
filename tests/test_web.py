@@ -129,6 +129,9 @@ def test_key_mapping_page_and_api_persist_bindings(tmp_path: Path) -> None:
         assert page.status_code == 200
         assert "按键映射" in page.text
         assert 'id="mapping-enabled"' in page.text
+        assert 'id="preset-select"' in page.text
+        assert 'id="preset-dialog"' in page.text
+        assert 'id="clear-all-bindings"' in page.text
 
         response = client.put(
             "/api/key-mapping",
@@ -146,6 +149,52 @@ def test_key_mapping_page_and_api_persist_bindings(tmp_path: Path) -> None:
         assert invalid.status_code == 422
 
     assert mapping_store.load().bindings == ((60, "KeyA"), (64, "Digit1"))
+
+
+def test_key_mapping_presets_support_chinese_and_preserve_enabled_state(
+    tmp_path: Path,
+) -> None:
+    app = create_web_app(
+        settings_store=SettingsStore(tmp_path / "config.json"),
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        auto_start_midi=False,
+    )
+    with TestClient(app) as client:
+        client.put(
+            "/api/key-mapping",
+            json={"enabled": True, "bindings": {"60": "KeyA"}},
+        )
+        created = client.post(
+            "/api/key-mapping/presets",
+            json={"name": "鸣潮 战斗映射"},
+        )
+        assert created.status_code == 200
+        preset = created.json()["preset"]
+        assert preset["name"] == "鸣潮 战斗映射"
+        assert preset["bindings"] == {"60": "KeyA"}
+
+        client.put(
+            "/api/key-mapping",
+            json={"enabled": True, "bindings": {"64": "KeyD"}},
+        )
+        applied = client.post(
+            f"/api/key-mapping/presets/{preset['id']}/apply"
+        )
+        assert applied.status_code == 200
+        assert applied.json()["mapping"]["enabled"] is True
+        assert applied.json()["mapping"]["bindings"] == {"60": "KeyA"}
+
+        duplicate = client.post(
+            "/api/key-mapping/presets",
+            json={"name": "鸣潮 战斗映射"},
+        )
+        assert duplicate.status_code == 409
+        assert len(client.get("/api/key-mapping/presets").json()["presets"]) == 1
+
+        deleted = client.delete(f"/api/key-mapping/presets/{preset['id']}")
+        assert deleted.status_code == 200
+        assert client.get("/api/key-mapping/presets").json()["presets"] == []
 
 
 def test_settings_api_persists_input_selection_and_lists_inputs(tmp_path: Path) -> None:

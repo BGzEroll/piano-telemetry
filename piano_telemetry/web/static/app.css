@@ -155,6 +155,10 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .mapping-shell { width: min(1120px, calc(100% - 40px)); }
 .mapping-status-panel { display: grid; gap: 8px; }
 .mapping-master-toggle { min-height: 58px; border: 0; }
+.mapping-preset-panel { overflow: visible; }
+.preset-toolbar { display: grid; grid-template-columns: minmax(220px, 1fr) repeat(4, auto); align-items: center; gap: 9px; }
+.preset-select { min-width: 0; }
+.preset-modified { color: #a8751e; }
 .mapping-editor-title { align-items: flex-start; }
 .mapping-editor-title > div { display: grid; gap: 7px; }
 .mapping-editor-title p, .keyboard-heading span { margin: 0; color: var(--muted); font-size: 12px; }
@@ -186,6 +190,7 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .computer-key.assigned { color: #0d725c; border-color: rgba(22,140,114,.3); background: #e9f7f3; box-shadow: 0 3px 0 #b9ded3; }
 .computer-key.selected-binding { border-color: #e2a838; box-shadow: 0 0 0 3px rgba(226,168,56,.16), 0 3px 0 #e6d6a8; }
 .binding-count { color: var(--muted); font-size: 12px; }
+.binding-list-actions { display: flex; align-items: center; gap: 12px; }
 .binding-list { display: flex; flex-wrap: wrap; gap: 8px; }
 .binding-empty { color: var(--muted); font-size: 12px; }
 .binding-chip { min-height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line); border-radius: 11px; color: var(--text); background: #f8fbfa; cursor: pointer; }
@@ -214,6 +219,9 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
   .nav-links { gap: 2px; }
   .nav-links a { padding-inline: 9px; }
   .mapping-editor-title, .keyboard-heading { align-items: flex-start; flex-direction: column; }
+  .preset-toolbar { grid-template-columns: 1fr 1fr; }
+  .preset-select { grid-column: 1 / -1; }
+  .preset-toolbar .button { padding-inline: 10px; }
   .selected-note-row { flex-wrap: wrap; }
   .selected-note-row strong { width: calc(100% - 80px); margin-right: 0; }
   .session-card { align-items: flex-start; flex-direction: column; }

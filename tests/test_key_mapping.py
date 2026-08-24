@@ -5,6 +5,7 @@ from time import monotonic, sleep
 
 from piano_telemetry.core.key_mapping import (
     KeyboardMappingService,
+    KeyboardMappingPresetStore,
     KeyboardMappingSettings,
     KeyboardMappingStore,
 )
@@ -111,3 +112,31 @@ def test_service_start_disables_saved_mapping_but_keeps_bindings(tmp_path: Path)
         )
     finally:
         service.stop()
+
+
+def test_unicode_mapping_presets_are_atomic_snapshots(tmp_path: Path) -> None:
+    store = KeyboardMappingPresetStore(tmp_path / "key_mapping_presets.json")
+    created = store.create("鸣潮 战斗预设", ((60, "KeyA"), (64, "Digit1")))
+
+    assert store.get(created.preset_id) == created
+    assert store.list() == (created,)
+    assert "鸣潮 战斗预设" in store.path.read_text(encoding="utf-8")
+
+    replaced = store.replace(created.preset_id, ((67, "KeyD"),))
+    assert replaced.name == created.name
+    assert replaced.bindings == ((67, "KeyD"),)
+
+    store.delete(created.preset_id)
+    assert store.list() == ()
+
+
+def test_preset_names_reject_normalized_duplicates(tmp_path: Path) -> None:
+    store = KeyboardMappingPresetStore(tmp_path / "key_mapping_presets.json")
+    store.create("ＡＢＣ", ())
+
+    try:
+        store.create("abc", ())
+    except ValueError as exc:
+        assert "已存在" in str(exc)
+    else:
+        raise AssertionError("Normalized duplicate preset name should be rejected")

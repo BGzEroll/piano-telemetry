@@ -9,6 +9,22 @@ const elements = {
   computerKeyboard: document.querySelector('#computer-keyboard'),
   bindingList: document.querySelector('#binding-list'),
   bindingCount: document.querySelector('#binding-count'),
+  clearAll: document.querySelector('#clear-all-bindings'),
+  presetSelect: document.querySelector('#preset-select'),
+  presetTrigger: document.querySelector('#preset-trigger'),
+  presetValue: document.querySelector('#preset-value'),
+  presetOptions: document.querySelector('#preset-options'),
+  presetState: document.querySelector('#preset-state'),
+  presetLoad: document.querySelector('#preset-load'),
+  presetSaveAs: document.querySelector('#preset-save-as'),
+  presetOverwrite: document.querySelector('#preset-overwrite'),
+  presetDelete: document.querySelector('#preset-delete'),
+  presetDialogBackdrop: document.querySelector('#preset-dialog-backdrop'),
+  presetDialog: document.querySelector('#preset-dialog'),
+  presetName: document.querySelector('#preset-name'),
+  presetDialogError: document.querySelector('#preset-dialog-error'),
+  presetCancel: document.querySelector('#preset-cancel'),
+  presetConfirm: document.querySelector('#preset-confirm'),
 };
 
 const NOTE_MIN = 21;
@@ -28,6 +44,8 @@ let bindings = {};
 let selectedNote = null;
 let learning = false;
 let saveChain = Promise.resolve();
+let presets = [];
+let selectedPresetId = null;
 
 function noteName(note) {
   return `${pitchNames[note % 12]}${Math.floor(note / 12) - 1}`;
@@ -40,6 +58,153 @@ function keyLabel(code) {
 function showMessage(text, kind = '') {
   elements.message.textContent = text;
   elements.message.className = `action-message ${kind ? `message-${kind}` : ''}`;
+}
+
+function bindingsSignature(value) {
+  return JSON.stringify(
+    Object.entries(value || {}).sort((left, right) => Number(left[0]) - Number(right[0]))
+  );
+}
+
+function selectedPreset() {
+  return presets.find(preset => preset.id === selectedPresetId) || null;
+}
+
+function closePresetMenu({restoreFocus = false} = {}) {
+  elements.presetOptions.hidden = true;
+  elements.presetTrigger.setAttribute('aria-expanded', 'false');
+  if (restoreFocus) elements.presetTrigger.focus();
+}
+
+function openPresetMenu() {
+  if (!presets.length) return;
+  elements.presetOptions.hidden = false;
+  elements.presetTrigger.setAttribute('aria-expanded', 'true');
+  const selected = elements.presetOptions.querySelector('[aria-selected="true"]');
+  (selected || elements.presetOptions.firstElementChild)?.focus();
+}
+
+function choosePreset(presetId) {
+  selectedPresetId = presetId;
+  closePresetMenu({restoreFocus: true});
+  renderPresetControls();
+}
+
+function renderPresetControls() {
+  const preset = selectedPreset();
+  const modified = preset && bindingsSignature(bindings) !== bindingsSignature(preset.bindings);
+  elements.presetValue.textContent = preset?.name || (presets.length ? '选择预设' : '暂无预设');
+  elements.presetState.textContent = preset
+    ? `${preset.name} · ${modified ? '已修改' : '已加载'}`
+    : '当前配置未关联预设';
+  elements.presetState.classList.toggle('preset-modified', Boolean(modified));
+  elements.presetLoad.disabled = !preset;
+  elements.presetOverwrite.disabled = !preset;
+  elements.presetDelete.disabled = !preset;
+  elements.presetTrigger.disabled = !presets.length;
+  elements.presetOptions.replaceChildren();
+  presets.forEach(item => {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'select-option';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(item.id === selectedPresetId));
+    option.dataset.value = item.id;
+    option.textContent = item.name;
+    option.addEventListener('click', () => choosePreset(item.id));
+    elements.presetOptions.append(option);
+  });
+  closePresetMenu();
+}
+
+function openPresetDialog() {
+  elements.presetDialogError.textContent = '';
+  elements.presetName.value = '';
+  elements.presetDialogBackdrop.hidden = false;
+  requestAnimationFrame(() => elements.presetName.focus());
+}
+
+function closePresetDialog() {
+  elements.presetDialogBackdrop.hidden = true;
+}
+
+async function loadPresets() {
+  try {
+    const response = await fetch('/api/key-mapping/presets');
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.detail || '读取预设失败');
+    presets = Array.isArray(result.presets) ? result.presets : [];
+    if (!selectedPreset()) {
+      const matching = presets.find(
+        preset => bindingsSignature(preset.bindings) === bindingsSignature(bindings)
+      );
+      selectedPresetId = matching?.id || null;
+    }
+    renderPresetControls();
+  } catch (error) {
+    showMessage(error.message, 'error');
+  }
+}
+
+async function createPreset(name) {
+  await saveChain;
+  const response = await fetch('/api/key-mapping/presets', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name}),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || '保存预设失败');
+  presets.push(result.preset);
+  selectedPresetId = result.preset.id;
+  closePresetDialog();
+  renderPresetControls();
+  showMessage(`预设“${result.preset.name}”已保存`, 'success');
+}
+
+async function overwritePreset() {
+  const preset = selectedPreset();
+  if (!preset) return;
+  await saveChain;
+  const response = await fetch(`/api/key-mapping/presets/${encodeURIComponent(preset.id)}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: '{}',
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || '覆盖预设失败');
+  presets = presets.map(item => item.id === result.preset.id ? result.preset : item);
+  renderPresetControls();
+  showMessage(`预设“${result.preset.name}”已覆盖`, 'success');
+}
+
+async function applyPreset() {
+  const preset = selectedPreset();
+  if (!preset) return;
+  await saveChain;
+  const response = await fetch(`/api/key-mapping/presets/${encodeURIComponent(preset.id)}/apply`, {
+    method: 'POST',
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || '加载预设失败');
+  enabled = Boolean(result.mapping.enabled);
+  bindings = result.mapping.bindings || {};
+  renderAll();
+  showMessage(`预设“${preset.name}”已加载`, 'success');
+}
+
+async function deletePreset() {
+  const preset = selectedPreset();
+  if (!preset || !window.confirm(`确定删除预设“${preset.name}”吗？当前映射不会被清除。`)) return;
+  const response = await fetch(`/api/key-mapping/presets/${encodeURIComponent(preset.id)}`, {
+    method: 'DELETE',
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.detail || '删除预设失败');
+  presets = presets.filter(item => item.id !== preset.id);
+  selectedPresetId = null;
+  renderPresetControls();
+  showMessage(`预设“${preset.name}”已删除`, 'success');
 }
 
 function renderPiano() {
@@ -112,6 +277,7 @@ function renderBindingList() {
     .map(([note, code]) => [Number(note), code])
     .sort((left, right) => left[0] - right[0]);
   elements.bindingCount.textContent = `${entries.length} 个`;
+  elements.clearAll.disabled = entries.length === 0;
   elements.bindingList.replaceChildren();
   if (!entries.length) {
     const empty = document.createElement('span');
@@ -148,6 +314,7 @@ function renderAll() {
   updatePianoState();
   renderComputerKeyboard();
   renderBindingList();
+  renderPresetControls();
 }
 
 function selectNote(note, {scroll = true} = {}) {
@@ -236,6 +403,66 @@ elements.clear.addEventListener('click', () => {
   persist(`${name} 的映射已清除`);
 });
 
+elements.clearAll.addEventListener('click', () => {
+  bindings = {};
+  selectedNote = null;
+  renderAll();
+  persist('当前映射已清空，已保存的预设不受影响');
+});
+
+elements.presetTrigger.addEventListener('click', () => {
+  if (elements.presetOptions.hidden) openPresetMenu();
+  else closePresetMenu();
+});
+elements.presetOptions.addEventListener('keydown', event => {
+  const options = [...elements.presetOptions.children];
+  const current = options.indexOf(document.activeElement);
+  if (event.key === 'Escape') {
+    event.preventDefault(); closePresetMenu({restoreFocus: true}); return;
+  }
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault(); document.activeElement?.click(); return;
+  }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+    : event.key === 'ArrowDown' ? Math.min(options.length - 1, current + 1)
+    : Math.max(0, current - 1);
+  options[next]?.focus();
+});
+document.addEventListener('click', event => {
+  if (!elements.presetSelect.contains(event.target)) closePresetMenu();
+});
+elements.presetLoad.addEventListener('click', () => {
+  applyPreset().catch(error => showMessage(error.message, 'error'));
+});
+elements.presetSaveAs.addEventListener('click', openPresetDialog);
+elements.presetOverwrite.addEventListener('click', () => {
+  overwritePreset().catch(error => showMessage(error.message, 'error'));
+});
+elements.presetDelete.addEventListener('click', () => {
+  deletePreset().catch(error => showMessage(error.message, 'error'));
+});
+elements.presetDialog.addEventListener('submit', event => {
+  event.preventDefault();
+  const name = elements.presetName.value.trim();
+  if (!name) {
+    elements.presetDialogError.textContent = '请输入预设名称';
+    elements.presetName.focus();
+    return;
+  }
+  elements.presetConfirm.disabled = true;
+  elements.presetCancel.disabled = true;
+  elements.presetDialogError.textContent = '';
+  createPreset(name).catch(error => {
+    elements.presetDialogError.textContent = error.message;
+  }).finally(() => {
+    elements.presetConfirm.disabled = false;
+    elements.presetCancel.disabled = false;
+  });
+});
+elements.presetCancel.addEventListener('click', closePresetDialog);
+
 renderPiano();
-loadMapping();
+loadMapping().then(loadPresets);
 connectWebSocket();

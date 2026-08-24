@@ -30,6 +30,7 @@ from piano_telemetry.core.key_mapping import (
     PIANO_NOTE_MAX,
     PIANO_NOTE_MIN,
     KeyboardMappingService,
+    KeyboardMappingPresetStore,
     KeyboardMappingSettings,
     KeyboardMappingStore,
 )
@@ -87,6 +88,14 @@ class KeyboardMappingPayload(BaseModel):
     bindings: dict[str, str] = Field(default_factory=dict)
 
 
+class KeyboardMappingPresetCreatePayload(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class KeyboardMappingPresetReplacePayload(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+
+
 def create_web_app(
     *,
     settings_store: SettingsStore | None = None,
@@ -96,6 +105,7 @@ def create_web_app(
     router_factory=MidiRouter,
     recorder: SessionRecorder | None = None,
     keyboard_mapping_store: KeyboardMappingStore | None = None,
+    keyboard_mapping_preset_store: KeyboardMappingPresetStore | None = None,
     keyboard_mapper: KeyboardMappingService | None = None,
     push_service: SessionPushService | None = None,
     auto_start_midi: bool = True,
@@ -104,6 +114,9 @@ def create_web_app(
     event_dispatcher = dispatcher or EventDispatcher[MidiEvent](ingress_capacity=4096)
     mapping_store = keyboard_mapping_store or KeyboardMappingStore(
         store.path.parent / "key_mapping.json"
+    )
+    preset_store = keyboard_mapping_preset_store or KeyboardMappingPresetStore(
+        store.path.parent / "key_mapping_presets.json"
     )
     mapper = keyboard_mapper or KeyboardMappingService(mapping_store)
     controller = MidiController(
@@ -163,6 +176,7 @@ def create_web_app(
     app.state.web_hub = hub
     app.state.session_recorder = session_recorder
     app.state.keyboard_mapper = mapper
+    app.state.keyboard_mapping_preset_store = preset_store
     app.state.push_service = session_push_service
 
     app.mount("/static", StaticFiles(directory=web_root / "static"), name="static")
@@ -231,6 +245,68 @@ def create_web_app(
         except Exception as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return mapper.status()
+
+    @app.get("/api/key-mapping/presets")
+    async def get_key_mapping_presets() -> dict[str, object]:
+        presets = await asyncio.to_thread(preset_store.list)
+        return {"presets": [preset.to_dict() for preset in presets]}
+
+    @app.post("/api/key-mapping/presets")
+    async def create_key_mapping_preset(
+        payload: KeyboardMappingPresetCreatePayload,
+    ) -> dict[str, object]:
+        current = KeyboardMappingSettings.from_dict(mapper.status(), strict=True)
+        try:
+            preset = await asyncio.to_thread(
+                preset_store.create,
+                payload.name,
+                current.bindings,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"preset": preset.to_dict()}
+
+    @app.put("/api/key-mapping/presets/{preset_id}")
+    async def replace_key_mapping_preset(
+        preset_id: str,
+        payload: KeyboardMappingPresetReplacePayload | None = None,
+    ) -> dict[str, object]:
+        current = KeyboardMappingSettings.from_dict(mapper.status(), strict=True)
+        details = payload or KeyboardMappingPresetReplacePayload()
+        try:
+            preset = await asyncio.to_thread(
+                preset_store.replace,
+                preset_id,
+                current.bindings,
+                name=details.name,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"preset": preset.to_dict()}
+
+    @app.delete("/api/key-mapping/presets/{preset_id}")
+    async def delete_key_mapping_preset(preset_id: str) -> dict[str, object]:
+        try:
+            await asyncio.to_thread(preset_store.delete, preset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        return {"deleted": True, "preset_id": preset_id}
+
+    @app.post("/api/key-mapping/presets/{preset_id}/apply")
+    async def apply_key_mapping_preset(preset_id: str) -> dict[str, object]:
+        try:
+            preset = await asyncio.to_thread(preset_store.get, preset_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc.args[0])) from exc
+        current = mapper.status()
+        settings = KeyboardMappingSettings(
+            enabled=bool(current["enabled"]),
+            bindings=preset.bindings,
+        )
+        await asyncio.to_thread(mapper.apply, settings)
+        return {"preset": preset.to_dict(), "mapping": mapper.status()}
 
     @app.get("/api/tonality")
     async def get_tonality() -> dict[str, object]:

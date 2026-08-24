@@ -31,6 +31,26 @@
       <span id="mapping-message" class="action-message" aria-live="polite"></span>
     </section>
 
+    <section class="settings-panel mapping-preset-panel">
+      <div class="panel-title">
+        <h2>映射预设</h2>
+        <span id="preset-state" class="binding-count">当前配置未关联预设</span>
+      </div>
+      <div class="preset-toolbar">
+        <div id="preset-select" class="custom-select preset-select">
+          <button id="preset-trigger" class="select-trigger" type="button" role="combobox" aria-haspopup="listbox" aria-expanded="false" aria-controls="preset-options">
+            <span id="preset-value">选择预设</span>
+            <i class="select-chevron" aria-hidden="true"></i>
+          </button>
+          <div id="preset-options" class="select-options" role="listbox" aria-label="映射预设" hidden></div>
+        </div>
+        <button id="preset-load" class="button success" type="button" disabled>加载预设</button>
+        <button id="preset-save-as" class="button primary" type="button">保存为预设</button>
+        <button id="preset-overwrite" class="button ghost" type="button" disabled>覆盖预设</button>
+        <button id="preset-delete" class="button danger" type="button" disabled>删除预设</button>
+      </div>
+    </section>
+
     <section class="settings-panel mapping-editor">
       <div class="panel-title mapping-editor-title">
         <div>
@@ -60,11 +80,27 @@
     <section class="settings-panel">
       <div class="panel-title">
         <h2>已配置映射</h2>
-        <span id="binding-count" class="binding-count">0 个</span>
+        <div class="binding-list-actions">
+          <span id="binding-count" class="binding-count">0 个</span>
+          <button id="clear-all-bindings" class="button danger compact" type="button" disabled>清空当前映射</button>
+        </div>
       </div>
       <div id="binding-list" class="binding-list"></div>
     </section>
   </main>
+
+  <div id="preset-dialog-backdrop" class="record-dialog-backdrop" hidden>
+    <form id="preset-dialog" class="record-dialog" role="dialog" aria-modal="true" aria-labelledby="preset-dialog-title">
+      <strong id="preset-dialog-title">保存为预设</strong>
+      <label for="preset-name">预设名称：</label>
+      <input id="preset-name" type="text" maxlength="100" autocomplete="off">
+      <span id="preset-dialog-error" class="record-dialog-error" aria-live="polite"></span>
+      <div class="record-dialog-actions">
+        <button id="preset-cancel" class="button ghost" type="button">取消</button>
+        <button id="preset-confirm" class="button primary" type="submit">保存</button>
+      </div>
+    </form>
+  </div>
   <script src="/static/mapping.js"></script>
 </body>
 </html>

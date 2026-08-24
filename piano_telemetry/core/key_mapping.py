@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from queue import Empty, Full, Queue
 from threading import Event, RLock, Thread
 from typing import Protocol
+from uuid import uuid4
 
 from piano_telemetry.windows_keyboard import WindowsKeySender
 
@@ -20,6 +22,7 @@ ALLOWED_KEY_CODES = tuple(
     + [f"Key{letter}" for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ"]
 )
 _ALLOWED_KEY_CODE_SET = frozenset(ALLOWED_KEY_CODES)
+PRESET_NAME_MAX_LENGTH = 100
 
 
 class KeySender(Protocol):
@@ -101,6 +104,172 @@ class KeyboardMappingStore:
                 encoding="utf-8",
             )
             os.replace(temporary, self.path)
+
+
+@dataclass(frozen=True, slots=True)
+class KeyboardMappingPreset:
+    preset_id: str
+    name: str
+    bindings: tuple[tuple[int, str], ...]
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "KeyboardMappingPreset | None":
+        preset_id = payload.get("id")
+        name = payload.get("name")
+        if not isinstance(preset_id, str) or not preset_id:
+            return None
+        try:
+            valid_name = validate_preset_name(name)
+            settings = KeyboardMappingSettings.from_dict(
+                {"bindings": payload.get("bindings", {})},
+                strict=True,
+            )
+        except ValueError:
+            return None
+        return cls(preset_id=preset_id, name=valid_name, bindings=settings.bindings)
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "id": self.preset_id,
+            "name": self.name,
+            "bindings": {str(note): key for note, key in self.bindings},
+        }
+
+
+def validate_preset_name(value: object) -> str:
+    if not isinstance(value, str):
+        raise ValueError("请输入预设名称")
+    name = value.strip()
+    if not name:
+        raise ValueError("请输入预设名称")
+    if len(name) > PRESET_NAME_MAX_LENGTH:
+        raise ValueError(f"预设名称不能超过 {PRESET_NAME_MAX_LENGTH} 个字符")
+    if any(unicodedata.category(character) == "Cc" for character in name):
+        raise ValueError("预设名称包含不支持的控制字符")
+    return name
+
+
+class KeyboardMappingPresetStore:
+    """Atomic Unicode preset storage; presets are snapshots of bindings only."""
+
+    def __init__(self, path: Path | str | None = None) -> None:
+        self.path = (
+            Path(path)
+            if path is not None
+            else default_data_dir() / "key_mapping_presets.json"
+        )
+        self._lock = RLock()
+
+    def list(self) -> tuple[KeyboardMappingPreset, ...]:
+        with self._lock:
+            return self._load_unlocked()
+
+    def get(self, preset_id: str) -> KeyboardMappingPreset:
+        with self._lock:
+            for preset in self._load_unlocked():
+                if preset.preset_id == preset_id:
+                    return preset
+        raise KeyError("找不到指定预设")
+
+    def create(
+        self,
+        name: str,
+        bindings: tuple[tuple[int, str], ...],
+    ) -> KeyboardMappingPreset:
+        valid_name = validate_preset_name(name)
+        with self._lock:
+            presets = list(self._load_unlocked())
+            self._ensure_unique_name(presets, valid_name)
+            preset = KeyboardMappingPreset(uuid4().hex, valid_name, bindings)
+            presets.append(preset)
+            self._save_unlocked(presets)
+            return preset
+
+    def replace(
+        self,
+        preset_id: str,
+        bindings: tuple[tuple[int, str], ...],
+        *,
+        name: str | None = None,
+    ) -> KeyboardMappingPreset:
+        with self._lock:
+            presets = list(self._load_unlocked())
+            index = next(
+                (index for index, item in enumerate(presets) if item.preset_id == preset_id),
+                None,
+            )
+            if index is None:
+                raise KeyError("找不到指定预设")
+            valid_name = presets[index].name if name is None else validate_preset_name(name)
+            self._ensure_unique_name(presets, valid_name, except_id=preset_id)
+            preset = KeyboardMappingPreset(preset_id, valid_name, bindings)
+            presets[index] = preset
+            self._save_unlocked(presets)
+            return preset
+
+    def delete(self, preset_id: str) -> None:
+        with self._lock:
+            presets = list(self._load_unlocked())
+            remaining = [item for item in presets if item.preset_id != preset_id]
+            if len(remaining) == len(presets):
+                raise KeyError("找不到指定预设")
+            self._save_unlocked(remaining)
+
+    def _load_unlocked(self) -> tuple[KeyboardMappingPreset, ...]:
+        try:
+            payload = json.loads(self.path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, json.JSONDecodeError):
+            return ()
+        raw_presets = payload.get("presets", []) if isinstance(payload, dict) else []
+        if not isinstance(raw_presets, list):
+            return ()
+        presets: list[KeyboardMappingPreset] = []
+        ids: set[str] = set()
+        names: set[str] = set()
+        for raw in raw_presets:
+            if not isinstance(raw, dict):
+                continue
+            preset = KeyboardMappingPreset.from_dict(raw)
+            if preset is None:
+                continue
+            name_key = _preset_name_key(preset.name)
+            if preset.preset_id in ids or name_key in names:
+                continue
+            presets.append(preset)
+            ids.add(preset.preset_id)
+            names.add(name_key)
+        return tuple(presets)
+
+    def _save_unlocked(self, presets: list[KeyboardMappingPreset]) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.path.with_name(f".{self.path.name}.tmp")
+        payload = {
+            "version": 1,
+            "presets": [preset.to_dict() for preset in presets],
+        }
+        temporary.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        os.replace(temporary, self.path)
+
+    @staticmethod
+    def _ensure_unique_name(
+        presets: list[KeyboardMappingPreset],
+        name: str,
+        *,
+        except_id: str | None = None,
+    ) -> None:
+        target = _preset_name_key(name)
+        if any(
+            preset.preset_id != except_id and _preset_name_key(preset.name) == target
+            for preset in presets
+        ):
+            raise ValueError("预设名称已存在")
+
+
+def _preset_name_key(name: str) -> str:
+    return unicodedata.normalize("NFKC", name).casefold()
 
 
 class KeyboardMappingService:
