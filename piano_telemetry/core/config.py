@@ -38,6 +38,8 @@ class AppSettings:
     receive_clock: bool = False
     receive_active_sensing: bool = False
     panic_on_stop: bool = True
+    fixed_half_pedal_enabled: bool = False
+    pedal_depth: int = 80
     push_enabled: bool = False
     push_server_url: str = DEFAULT_PUSH_SERVER_URL
     push_token: str = DEFAULT_PUSH_TOKEN
@@ -55,6 +57,11 @@ class AppSettings:
             )
         if "tonality" in values:
             values["tonality"] = normalize_tonality(values["tonality"])
+        if "pedal_depth" in values:
+            depth = values["pedal_depth"]
+            values["pedal_depth"] = (
+                max(64, min(127, depth)) if type(depth) is int else 80
+            )
         if "push_server_url" in values:
             server_url = values["push_server_url"]
             values["push_server_url"] = (
@@ -69,6 +76,7 @@ class AppSettings:
             "receive_clock",
             "receive_active_sensing",
             "panic_on_stop",
+            "fixed_half_pedal_enabled",
             "push_enabled",
         ):
             if key in values:

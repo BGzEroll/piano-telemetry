@@ -64,6 +64,8 @@ class SettingsPayload(BaseModel):
     receive_clock: bool = False
     receive_active_sensing: bool = False
     panic_on_stop: bool = True
+    fixed_half_pedal_enabled: bool = False
+    pedal_depth: int = Field(default=80, ge=64, le=127, strict=True)
     push_enabled: bool = False
     push_server_url: str = Field(default=DEFAULT_PUSH_SERVER_URL, max_length=2048)
     push_token: str | None = Field(default=None, max_length=512)
@@ -111,6 +113,7 @@ def create_web_app(
     auto_start_midi: bool = True,
 ):
     store = settings_store or SettingsStore()
+    settings_lock = asyncio.Lock()
     event_dispatcher = dispatcher or EventDispatcher[MidiEvent](ingress_capacity=4096)
     mapping_store = keyboard_mapping_store or KeyboardMappingStore(
         store.path.parent / "key_mapping.json"
@@ -208,17 +211,18 @@ def create_web_app(
     @app.put("/api/settings")
     async def put_settings(payload: SettingsPayload) -> dict[str, object]:
         try:
-            settings, restarted = await asyncio.to_thread(
-                _save_and_apply_settings,
-                store,
-                controller,
-                _settings_from_payload(payload, store.load()),
-                midi_ports_provider,
-            )
+            async with settings_lock:
+                settings, restarted = await asyncio.to_thread(
+                    _save_and_apply_settings,
+                    store,
+                    controller,
+                    _settings_from_payload(payload, store.load()),
+                    midi_ports_provider,
+                )
+                hub.set_tonality(settings.tonality)
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         result = _public_settings(settings)
-        hub.set_tonality(settings.tonality)
         result["midi_restarted"] = restarted
         return result
 
@@ -320,8 +324,9 @@ def create_web_app(
         selected = normalize_tonality(payload.tonality)
         if selected != payload.tonality:
             raise HTTPException(status_code=422, detail="不支持的调式")
-        settings = replace(store.load(), tonality=selected)
-        await asyncio.to_thread(store.save, settings)
+        async with settings_lock:
+            settings = replace(store.load(), tonality=selected)
+            await asyncio.to_thread(store.save, settings)
         return {
             "tonality": selected,
             "state": hub.set_tonality(selected),
@@ -345,12 +350,13 @@ def create_web_app(
     @app.post("/api/midi/start")
     async def start_midi() -> dict[str, object]:
         try:
-            settings = await asyncio.to_thread(
-                _load_startable_settings,
-                store,
-                midi_ports_provider,
-            )
-            return await asyncio.to_thread(controller.start, settings)
+            async with settings_lock:
+                settings = await asyncio.to_thread(
+                    _load_startable_settings,
+                    store,
+                    midi_ports_provider,
+                )
+                return await asyncio.to_thread(controller.start, settings)
         except Exception as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
 
@@ -680,6 +686,8 @@ def _save_and_apply_settings(
     if was_running and midi_changed:
         controller.stop()
         controller.start(settings)
+    elif was_running:
+        controller.update_pedal_settings(settings)
     return settings, was_running and midi_changed
 
 

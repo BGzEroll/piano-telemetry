@@ -45,6 +45,8 @@ a:focus-visible, button:focus-visible { outline: 0; box-shadow: 0 0 0 4px rgba(2
 .text-input { width: 100%; min-height: 46px; padding: 0 14px; border: 1px solid var(--line); border-radius: var(--radius-md); color: var(--text); background: linear-gradient(180deg, #fff, #f8fbfa); outline: 0; transition: border-color .18s, box-shadow .18s, background .18s; }
 .text-input:focus { border-color: rgba(22,140,114,.55); background: #fff; box-shadow: 0 0 0 4px rgba(22,140,114,.1); }
 .field-hint { min-height: 17px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.pedal-depth-field { margin-top: 18px; }
+.pedal-depth-field input[type="range"] { width: 100%; margin: 0; accent-color: var(--green); }
 .push-config-grid { display: grid; grid-template-columns: 1fr 1fr; align-items: start; gap: 18px; }
 .push-toggle-list { margin-bottom: 18px; }
 .toggle-row small { color: var(--muted); font-size: 11px; line-height: 1.5; }

@@ -54,6 +54,8 @@ class MidiController:
                     receive_clock=settings.receive_clock,
                     receive_active_sensing=settings.receive_active_sensing,
                     panic_on_stop=settings.panic_on_stop,
+                    fixed_half_pedal_enabled=settings.fixed_half_pedal_enabled,
+                    pedal_depth=settings.pedal_depth,
                 ),
                 self.dispatcher,
             )
@@ -78,6 +80,14 @@ class MidiController:
             if self._keyboard_mapper is not None:
                 self._keyboard_mapper.release_all()
             return self.status()
+
+    def update_pedal_settings(self, settings: AppSettings) -> None:
+        with self._lock:
+            if self._router is not None:
+                self._router.update_pedal_settings(
+                    enabled=settings.fixed_half_pedal_enabled,
+                    depth=settings.pedal_depth,
+                )
 
     def status(self) -> dict[str, object]:
         with self._lock:

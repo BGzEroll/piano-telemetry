@@ -5,13 +5,15 @@ from dataclasses import asdict, dataclass
 
 @dataclass(slots=True)
 class RouterMetrics:
-    """Single-writer counters updated by the MIDI callback thread."""
+    """MIDI input counters and separate runtime pedal synchronization counters."""
 
     events_received_total: int = 0
     events_forwarded_total: int = 0
     forward_errors_total: int = 0
     observer_publish_errors_total: int = 0
     shutdown_errors_total: int = 0
+    pedal_updates_total: int = 0
+    pedal_update_errors_total: int = 0
 
     def snapshot(self) -> dict[str, int]:
         return asdict(self)

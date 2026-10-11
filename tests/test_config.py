@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 import piano_telemetry.core.config as config_module
 from piano_telemetry.core.config import AppSettings, SettingsStore
 
@@ -59,3 +61,21 @@ def test_tonality_is_validated_and_persisted(tmp_path: Path) -> None:
     assert store.load().tonality == "Eb_minor"
 
     assert AppSettings.from_dict({"tonality": "not-a-key"}).tonality == "C_major"
+
+
+def test_pedal_settings_defaults_and_round_trip(tmp_path: Path) -> None:
+    store = SettingsStore(tmp_path / "data" / "config.json")
+    assert store.load().fixed_half_pedal_enabled is False
+    assert store.load().pedal_depth == 80
+    settings = AppSettings(fixed_half_pedal_enabled=True, pedal_depth=95)
+    store.save(settings)
+    assert SettingsStore(store.path).load() == settings
+    assert AppSettings.from_dict({"receive_sysex": True}).pedal_depth == 80
+
+
+@pytest.mark.parametrize("value,expected", [
+    (0, 64), (200, 127), (64, 64), (127, 127),
+    ("90", 80), (None, 80), (True, 80), (80.5, 80),
+])
+def test_saved_pedal_depth_is_normalized(value, expected) -> None:
+    assert AppSettings.from_dict({"pedal_depth": value}).pedal_depth == expected

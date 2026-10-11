@@ -1,12 +1,15 @@
 from pathlib import Path
 from time import perf_counter_ns
 
+import pytest
+
 from fastapi.testclient import TestClient
 
 from piano_telemetry.core.config import AppSettings, SettingsStore
 from piano_telemetry.core.key_mapping import KeyboardMappingStore
 from piano_telemetry.midi.event import MidiEvent
 from piano_telemetry.midi.ports import MidiPorts
+from piano_telemetry.midi.router import MidiRouter
 from piano_telemetry.midi.virtual_midi import (
     VIRTUAL_INPUT_PORT_NAME,
     VIRTUAL_OUTPUT_PORT_NAME,
@@ -39,6 +42,13 @@ class TrackingRouter:
     def stop(self) -> None:
         self.stopped = True
 
+    def update_pedal_settings(self, *, enabled: bool, depth: int) -> None:
+        from dataclasses import replace
+
+        self.config = replace(
+            self.config, fixed_half_pedal_enabled=enabled, pedal_depth=depth
+        )
+
 
 def available_driver() -> VirtualMidiStatus:
     return VirtualMidiStatus(available=True, message="ready")
@@ -53,6 +63,116 @@ def available_ports() -> MidiPorts:
         inputs=("Digital Piano", "Piano Telemetry Output 0"),
         outputs=(),
     )
+
+
+class MemoryOutput:
+    def __init__(self):
+        self.messages = []
+
+    def send_message(self, message):
+        self.messages.append(tuple(message))
+
+    def close_port(self):
+        pass
+
+
+class MemoryRouter(MidiRouter):
+    """Exercise real routing and live updates without requiring a MIDI device."""
+
+    def start(self):
+        self._midi_out = MemoryOutput()
+        self.input_name = self.config.input_port
+        self.output_name = self.config.output_port
+
+
+def test_live_pedal_api_keeps_router_and_updates_recording_and_state(tmp_path: Path) -> None:
+    import json
+    import mido
+
+    store = SettingsStore(tmp_path / "config.json")
+    app = create_web_app(
+        settings_store=store,
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=MemoryRouter,
+    )
+
+    def receive_midi_state(websocket):
+        while True:
+            payload = websocket.receive_json()
+            if payload["kind"] == "telemetry":
+                return payload["state"]
+
+    with TestClient(app) as client:
+        defaults = client.get("/api/settings").json()
+        assert defaults["fixed_half_pedal_enabled"] is False
+        assert defaults["pedal_depth"] == 80
+        page = client.get("/settings").text
+        assert 'id="fixed-half-pedal-enabled"' in page
+        assert 'type="range" min="64" max="127" step="1" value="80"' in page
+        router = app.state.midi_controller._router
+        output = router._midi_out
+        assert client.post("/api/recording/start", json={}).status_code == 200
+
+        with client.websocket_connect("/ws") as websocket:
+            websocket.receive_json()
+            router._handle_message([0xB5, 64, 100], captured_monotonic_ns=perf_counter_ns())
+            assert receive_midi_state(websocket)["sustain"] == 100
+            for enabled, depth, expected in [(True, 80, 80), (True, 95, 95), (False, 95, 100)]:
+                response = client.put("/api/settings", json={
+                    "fixed_half_pedal_enabled": enabled, "pedal_depth": depth,
+                })
+                assert response.status_code == 200
+                assert response.json()["midi_restarted"] is False
+                assert app.state.midi_controller._router is router
+                assert router._midi_out is output
+                assert output.messages[-1] == (0xB5, 64, expected)
+                assert receive_midi_state(websocket)["sustain"] == expected
+
+            router._handle_message([0xB5, 64, 0], captured_monotonic_ns=perf_counter_ns())
+            assert receive_midi_state(websocket)["sustain"] == 0
+            before = list(output.messages)
+            response = client.put("/api/settings", json={
+                "fixed_half_pedal_enabled": True, "pedal_depth": 90,
+            })
+            assert response.status_code == 200
+            assert output.messages == before
+        stopped = client.post("/api/recording/stop").json()
+        session_dir = Path(stopped["result"]["directory"])
+        payloads = [json.loads(line) for line in (session_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+        expected = [(0xB5, 64, value) for value in [100, 80, 95, 100, 0]]
+        assert [tuple(payload["raw"]) for payload in payloads] == expected
+        midi = mido.MidiFile(session_dir / "session.mid")
+        assert [tuple(message.bytes()) for message in midi.tracks[0] if not message.is_meta] == expected
+        assert stopped["result"]["complete"] is True
+
+    # A new application loads saved settings; no held-pedal state survives restart.
+    restarted_app = create_web_app(
+        settings_store=SettingsStore(store.path),
+        virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports,
+        router_factory=MemoryRouter,
+    )
+    with TestClient(restarted_app) as client:
+        router = restarted_app.state.midi_controller._router
+        assert router.config.fixed_half_pedal_enabled is True
+        assert router.config.pedal_depth == 90
+        assert router._midi_out.messages == []
+        router._handle_message([0xBF, 64, 127], captured_monotonic_ns=perf_counter_ns())
+        assert router._midi_out.messages == [(0xBF, 64, 90)]
+
+
+@pytest.mark.parametrize("depth", [63, 128, 80.5, "80", True, None])
+def test_pedal_api_rejects_invalid_depth_without_saving(tmp_path: Path, depth) -> None:
+    store = SettingsStore(tmp_path / "config.json")
+    app = create_web_app(
+        settings_store=store, virtual_status_provider=available_driver,
+        midi_ports_provider=available_ports, auto_start_midi=False,
+    )
+    with TestClient(app) as client:
+        response = client.put("/api/settings", json={"pedal_depth": depth})
+        assert response.status_code == 422
+        assert store.load() == AppSettings()
 
 
 def test_visualization_is_home_and_redundant_labels_are_removed(tmp_path: Path) -> None:

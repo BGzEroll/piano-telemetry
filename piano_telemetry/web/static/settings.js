@@ -8,6 +8,9 @@ const elements = {
   clock: document.querySelector('#receive-clock'),
   active: document.querySelector('#receive-active'),
   panic: document.querySelector('#panic-on-stop'),
+  halfPedal: document.querySelector('#fixed-half-pedal-enabled'),
+  pedalDepth: document.querySelector('#pedal-depth'),
+  pedalDepthValue: document.querySelector('#pedal-depth-value'),
   portMessage: document.querySelector('#port-message'),
   actionMessage: document.querySelector('#action-message'),
   start: document.querySelector('#start-midi'),
@@ -92,6 +95,9 @@ async function loadEverything() {
     elements.clock.checked = settings.receive_clock;
     elements.active.checked = settings.receive_active_sensing;
     elements.panic.checked = settings.panic_on_stop;
+    elements.halfPedal.checked = Boolean(settings.fixed_half_pedal_enabled);
+    elements.pedalDepth.value = settings.pedal_depth ?? 80;
+    elements.pedalDepthValue.textContent = elements.pedalDepth.value;
     elements.pushEnabled.checked = Boolean(settings.push_enabled);
     elements.pushServerUrl.value = settings.push_server_url || 'http://192.168.114.103:8767';
     elements.pushToken.value = '';
@@ -125,6 +131,8 @@ function currentSettings() {
     receive_clock: elements.clock.checked,
     receive_active_sensing: elements.active.checked,
     panic_on_stop: elements.panic.checked,
+    fixed_half_pedal_enabled: elements.halfPedal.checked,
+    pedal_depth: Number(elements.pedalDepth.value),
     push_enabled: elements.pushEnabled.checked,
     push_server_url: elements.pushServerUrl.value.trim(),
   };
@@ -152,6 +160,9 @@ function updateStatus(status) {
 }
 
 document.querySelector('#refresh-ports').addEventListener('click', loadEverything);
+elements.pedalDepth.addEventListener('input', () => {
+  elements.pedalDepthValue.textContent = elements.pedalDepth.value;
+});
 elements.inputTrigger.addEventListener('click', () => {
   if (elements.inputOptions.hidden) openInputMenu();
   else closeInputMenu();

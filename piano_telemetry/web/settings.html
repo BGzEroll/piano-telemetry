@@ -76,6 +76,23 @@
 
     <section class="settings-panel">
       <div class="panel-title">
+        <h2>延音踏板</h2>
+      </div>
+      <div class="toggle-list">
+        <label class="toggle-row">
+          <span><b>固定半踏板模拟</b><small>将开关踏板的踩下值映射为固定深度，松开时输出 0。默认关闭。</small></span>
+          <input id="fixed-half-pedal-enabled" type="checkbox"><i></i>
+        </label>
+      </div>
+      <label class="field pedal-depth-field" for="pedal-depth">
+        <span>踏板深度（CC64）：<output id="pedal-depth-value" for="pedal-depth">80</output></span>
+        <input id="pedal-depth" type="range" min="64" max="127" step="1" value="80">
+        <small class="field-hint">保存后立即生效，无需重启 MIDI；踩下时同步更新输出。部分音源仅识别开关，80 与 127 的延音效果可能相同。</small>
+      </label>
+    </section>
+
+    <section class="settings-panel">
+      <div class="panel-title">
         <h2>OpenClaw 推送</h2>
       </div>
       <div class="toggle-list push-toggle-list">

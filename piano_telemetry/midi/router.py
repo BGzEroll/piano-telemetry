@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import count
 from time import perf_counter_ns
+from threading import RLock
 from collections.abc import Callable
 from typing import Any
 
@@ -10,6 +11,7 @@ from piano_telemetry.core.dispatcher import EventDispatcher
 from piano_telemetry.core.metrics import RouterMetrics
 
 from .event import MidiEvent
+from .pedal_processor import PedalProcessor
 from .ports import _load_rtmidi, resolve_port
 from .virtual_midi import (
     VIRTUAL_INPUT_PORT_NAME,
@@ -27,6 +29,8 @@ class MidiRouterConfig:
     receive_clock: bool = False
     receive_active_sensing: bool = False
     panic_on_stop: bool = True
+    fixed_half_pedal_enabled: bool = False
+    pedal_depth: int = 80
 
 
 class MidiRouter:
@@ -49,6 +53,28 @@ class MidiRouter:
         self._sequence = count(1)
         self._virtual_driver_factory = virtual_driver_factory
         self._post_forward_callback: Callable[[list[int]], object] | None = None
+        self._pedal_lock = RLock()
+        self._pedal = PedalProcessor(
+            enabled=config.fixed_half_pedal_enabled, depth=config.pedal_depth
+        )
+
+    def update_pedal_settings(self, *, enabled: bool, depth: int) -> None:
+        """Apply settings and synchronize held channels without reopening ports."""
+        with self._pedal_lock:
+            updates = self._pedal.configure(enabled=enabled, depth=depth)
+            self.config = replace(
+                self.config, fixed_half_pedal_enabled=enabled, pedal_depth=depth
+            )
+            if self._midi_out is None:
+                return
+            failed = False
+            for message in updates:
+                if not self._forward_message(
+                    message, captured_monotonic_ns=perf_counter_ns(), pedal_update=True
+                ):
+                    failed = True
+            if failed:
+                raise RuntimeError("Failed to synchronize MIDI pedal output")
 
     def set_post_forward_callback(
         self,
@@ -155,10 +181,12 @@ class MidiRouter:
         return midi_in, input_name
 
     def stop(self) -> None:
-        midi_in = self._midi_in
-        midi_out = self._midi_out
-        self._midi_in = None
-        self._midi_out = None
+        with self._pedal_lock:
+            midi_in = self._midi_in
+            midi_out = self._midi_out
+            self._midi_in = None
+            self._midi_out = None
+            self._pedal.reset()
 
         if midi_in is not None:
             try:
@@ -217,17 +245,52 @@ class MidiRouter:
     ) -> None:
         """Forward first, then make a best-effort observer publication."""
         self.metrics.events_received_total += 1
+        if self._pedal.is_state_message(message):
+            # Serialize pedal input, setting updates and sends to prevent stale sustain.
+            with self._pedal_lock:
+                self._forward_message(
+                    self._pedal.process(message) if self._midi_out is not None else message,
+                    captured_monotonic_ns=captured_monotonic_ns,
+                    source_port=source_port,
+                )
+        else:
+            # Notes and other messages retain the original path, without the pedal lock.
+            self._forward_message(
+                message,
+                captured_monotonic_ns=captured_monotonic_ns,
+                source_port=source_port,
+            )
+
+    def _forward_message(
+        self,
+        message: list[int],
+        *,
+        captured_monotonic_ns: int,
+        source_port: str | None = None,
+        pedal_update: bool = False,
+    ) -> bool:
         midi_out = self._midi_out
         if midi_out is None:
-            self.metrics.forward_errors_total += 1
-            return
+            if pedal_update:
+                self.metrics.pedal_update_errors_total += 1
+            else:
+                self.metrics.forward_errors_total += 1
+            return False
 
         try:
             midi_out.send_message(message)
-            self.metrics.events_forwarded_total += 1
+            if pedal_update:
+                self.metrics.pedal_updates_total += 1
+            else:
+                self.metrics.events_forwarded_total += 1
         except Exception:
-            self.metrics.forward_errors_total += 1
-            return
+            if pedal_update:
+                self.metrics.pedal_update_errors_total += 1
+            else:
+                self.metrics.forward_errors_total += 1
+            return False
+
+        self._pedal.record_output(message)
 
         callback = self._post_forward_callback
         if callback is not None:
@@ -248,6 +311,7 @@ class MidiRouter:
         except Exception:
             # Telemetry failures are deliberately isolated from MIDI output.
             self.metrics.observer_publish_errors_total += 1
+        return True
 
     @staticmethod
     def _send_panic(midi_out: Any) -> None:
